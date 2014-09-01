@@ -19,12 +19,12 @@ along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 #if defined(DEFINE_IN_INTERFACE)
-	#undef __LOGINAPP_INTERFACE_H__
+	#undef KBE_LOGINAPP_INTERFACE_HPP
 #endif
 
 
-#ifndef __LOGINAPP_INTERFACE_H__
-#define __LOGINAPP_INTERFACE_H__
+#ifndef KBE_LOGINAPP_INTERFACE_HPP
+#define KBE_LOGINAPP_INTERFACE_HPP
 
 // common include	
 #if defined(LOGINAPP)
@@ -138,6 +138,13 @@ NETWORK_INTERFACE_DECLARE_BEGIN(LoginappInterface)
 
 	// 请求查询watcher数据
 	LOGINAPP_MESSAGE_DECLARE_STREAM(queryWatcher,									MERCURY_VARIABLE_MESSAGE)
+
+	// baseapp同步自己的初始化信息
+	LOGINAPP_MESSAGE_DECLARE_ARGS1(onBaseappInitProgress,							MERCURY_FIXED_MESSAGE,
+									float,											progress)
+
+	// 开始profile
+	LOGINAPP_MESSAGE_DECLARE_STREAM(startProfile,									MERCURY_VARIABLE_MESSAGE)
 
 NETWORK_INTERFACE_DECLARE_END()
 

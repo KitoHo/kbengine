@@ -19,8 +19,8 @@ along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 
-#ifndef __CLIENT_OBJECT_BASE_H__
-#define __CLIENT_OBJECT_BASE_H__
+#ifndef CLIENT_OBJECT_BASE_HPP
+#define CLIENT_OBJECT_BASE_HPP
 
 #include "event.hpp"
 #include "script_callbacks.hpp"
@@ -62,6 +62,7 @@ public:
 
 	void finalise(void);
 	virtual void reset(void);
+	void canReset(bool v){ canReset_ = v; }
 
 	Entities<client::Entity>* pEntities()const{ return pEntities_; }
 
@@ -87,7 +88,9 @@ public:
 
 	bool createAccount();
 	bool login();
+	
 	bool loginGateWay();
+	bool reLoginGateWay();
 
 	int32 appID()const{ return appID_; }
 	const char* name(){ return name_.c_str(); }
@@ -118,6 +121,11 @@ public:
 	static PyObject* __py_callback(PyObject* self, PyObject* args);
 	static PyObject* __py_cancelCallback(PyObject* self, PyObject* args);
 
+	static PyObject* __py_getWatcher(PyObject* self, PyObject* args);
+	static PyObject* __py_getWatcherDir(PyObject* self, PyObject* args);
+
+	static PyObject* __py_disconnect(PyObject* self, PyObject* args);
+
 	/**
 		如果entitiessize小于256
 		通过索引位置来获取entityID
@@ -133,8 +141,8 @@ public:
 	/** 网络接口
 		客户端与服务端第一次建立交互, 服务端返回
 	*/
-	virtual void onHelloCB_(Mercury::Channel* pChannel, const std::string& verInfo, 
-		COMPONENT_TYPE componentType);
+	virtual void onHelloCB_(Mercury::Channel* pChannel, const std::string& verInfo,
+		const std::string& scriptVerInfo, COMPONENT_TYPE componentType);
 
 	virtual void onHelloCB(Mercury::Channel* pChannel, MemoryStream& s);
 
@@ -143,6 +151,10 @@ public:
 	*/
 	virtual void onVersionNotMatch(Mercury::Channel* pChannel, MemoryStream& s);
 	
+	/** 网络接口
+		和服务端的脚本层版本不匹配
+	*/
+	virtual void onScriptVersionNotMatch(Mercury::Channel* pChannel, MemoryStream& s);
 
 	/** 网络接口
 		创建账号成功和失败回调
@@ -179,6 +191,11 @@ public:
 	virtual void onLoginGatewayFailed(Mercury::Channel * pChannel, SERVER_ERROR_CODE failedcode);
 
 	/** 网络接口
+	   重登陆baseapp成功
+	*/
+	virtual void onReLoginGatewaySuccessfully(Mercury::Channel * pChannel);
+
+	/** 网络接口
 		服务器端已经创建了一个与客户端关联的代理Entity
 	   在登录时也可表达成功回调
 	   @datas: 账号entity的信息
@@ -205,12 +222,12 @@ public:
 	/** 网络接口
 		服务器上的entity已经进入space了
 	*/
-	virtual void onEntityEnterSpace(Mercury::Channel * pChannel, SPACE_ID spaceID, ENTITY_ID eid);
+	virtual void onEntityEnterSpace(Mercury::Channel * pChannel, MemoryStream& s);
 
 	/** 网络接口
 		服务器上的entity已经离开space了
 	*/
-	virtual void onEntityLeaveSpace(Mercury::Channel * pChannel, SPACE_ID spaceID, ENTITY_ID eid);
+	virtual void onEntityLeaveSpace(Mercury::Channel * pChannel, ENTITY_ID eid);
 
 	/** 网络接口
 		远程调用entity的方法 
@@ -362,12 +379,19 @@ public:
 	bool hasSpaceData(const std::string& key);
 	const std::string& getSpaceData(const std::string& key);
 	static PyObject* __py_GetSpaceData(PyObject* self, PyObject* args);
-	void clearSpace();
+	void clearSpace(bool isAll);
 
 	Timers & timers() { return timers_; }
 	void handleTimers();
 
 	ScriptCallbacks & scriptCallbacks() { return scriptCallbacks_; }
+
+	void locktime(uint64 t){ locktime_ = t; }
+	uint64 locktime()const{ return locktime_; }
+
+	virtual void onServerClosed();
+
+	uint64 rndUUID()const{ return rndUUID_; }
 protected:				
 	int32													appID_;
 
@@ -390,6 +414,9 @@ protected:
 
 	std::string												ip_;
 	uint16													port_;
+
+	std::string												gatewayIP_;
+	uint16													gateWayPort_;
 
 	uint64													lastSentActiveTickTime_;
 	uint64													lastSentUpdateDataTime_;
@@ -420,6 +447,11 @@ protected:
 
 	Timers													timers_;
 	ScriptCallbacks											scriptCallbacks_;
+
+	uint64													locktime_;
+	
+	// 用于重登陆网关时的key
+	uint64													rndUUID_; 
 };
 
 

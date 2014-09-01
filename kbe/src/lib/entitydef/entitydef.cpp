@@ -616,7 +616,6 @@ bool EntityDef::loadDefPropertys(const std::string& moduleName,
 			if(typeNode)
 			{
 				strType = xml->getValStr(typeNode);
-				//std::transform(strType.begin(), strType.end(), strType.begin(), toupper);										// 转换为大写
 
 				if(strType == "ARRAY")
 				{
@@ -703,13 +702,16 @@ bool EntityDef::loadDefPropertys(const std::string& moduleName,
 															detailLevel);
 
 			bool ret = true;
+
 			// 添加到模块中
 			if(hasCellFlags > 0)
 				ret = scriptModule->addPropertyDescription(name.c_str(), 
 						propertyDescription, CELLAPP_TYPE);
+
 			if(hasBaseFlags > 0)
 				ret = scriptModule->addPropertyDescription(name.c_str(), 
 						propertyDescription, BASEAPP_TYPE);
+
 			if(hasClientFlags > 0)
 				ret = scriptModule->addPropertyDescription(name.c_str(), 
 						propertyDescription, CLIENT_TYPE);
@@ -745,6 +747,7 @@ bool EntityDef::loadDefCellMethods(const std::string& moduleName,
 				XML_FOR_BEGIN(argNode)
 				{
 					std::string argType = xml->getKey(argNode);
+
 					if(argType == "Exposed")
 					{
 						methodDescription->setExposed();
@@ -762,7 +765,9 @@ bool EntityDef::loadDefCellMethods(const std::string& moduleName,
 								dataType = dataType1;
 						}
 						else
+						{
 							dataType = DataTypes::getDataType(strType);
+						}
 
 						if(dataType == NULL)
 						{
@@ -771,6 +776,7 @@ bool EntityDef::loadDefCellMethods(const std::string& moduleName,
 
 							return false;
 						}
+
 						methodDescription->pushArgType(dataType);
 					}
 					else if(argType == "Utype")
@@ -832,6 +838,7 @@ bool EntityDef::loadDefBaseMethods(const std::string& moduleName, XmlPlus* xml,
 				XML_FOR_BEGIN(argNode)
 				{
 					std::string argType = xml->getKey(argNode);
+
 					if(argType == "Exposed")
 					{
 						methodDescription->setExposed();
@@ -849,7 +856,9 @@ bool EntityDef::loadDefBaseMethods(const std::string& moduleName, XmlPlus* xml,
 								dataType = dataType1;
 						}
 						else
+						{
 							dataType = DataTypes::getDataType(strType);
+						}
 
 						if(dataType == NULL)
 						{
@@ -858,6 +867,7 @@ bool EntityDef::loadDefBaseMethods(const std::string& moduleName, XmlPlus* xml,
 
 							return false;
 						}
+
 						methodDescription->pushArgType(dataType);
 					}
 					else if(argType == "Utype")
@@ -919,6 +929,7 @@ bool EntityDef::loadDefClientMethods(const std::string& moduleName, XmlPlus* xml
 				XML_FOR_BEGIN(argNode)
 				{
 					std::string argType = xml->getKey(argNode);
+
 					if(argType == "Arg")
 					{
 						DataType* dataType = NULL;
@@ -932,7 +943,9 @@ bool EntityDef::loadDefClientMethods(const std::string& moduleName, XmlPlus* xml
 								dataType = dataType1;
 						}
 						else
+						{
 							dataType = DataTypes::getDataType(strType);
+						}
 
 						if(dataType == NULL)
 						{
@@ -941,6 +954,7 @@ bool EntityDef::loadDefClientMethods(const std::string& moduleName, XmlPlus* xml
 
 							return false;
 						}
+
 						methodDescription->pushArgType(dataType);
 					}
 					else if(argType == "Utype")
@@ -1250,6 +1264,7 @@ bool EntityDef::installScript(PyObject* mod)
 	EntityMailbox::installScript(NULL);
 	FixedArray::installScript(NULL);
 	FixedDict::installScript(NULL);
+
 	_isInit = true;
 	return true;
 }

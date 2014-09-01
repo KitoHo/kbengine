@@ -30,6 +30,7 @@ along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 #include "cstdkbe/memorystream.hpp"
 #include "helper/console_helper.hpp"
 #include "helper/sys_info.hpp"
+#include "helper/watch_pools.hpp"
 #include "resmgr/resmgr.hpp"
 
 #include "../../server/baseappmgr/baseappmgr_interface.hpp"
@@ -182,7 +183,7 @@ bool ServerApp::initializeWatcher()
 	WATCH_OBJECT("gametime", this, &ServerApp::time);
 
 	return Mercury::initializeWatcher() && Resmgr::getSingleton().initializeWatcher() &&
-		threadPool_.initializeWatcher();
+		threadPool_.initializeWatcher() && WatchPool::initWatchPools();
 }
 
 //-------------------------------------------------------------------------------------		
@@ -318,7 +319,7 @@ void ServerApp::onRemoveComponent(const Components::ComponentInfos* pInfos)
 //-------------------------------------------------------------------------------------
 void ServerApp::onRegisterNewApp(Mercury::Channel* pChannel, int32 uid, std::string& username, 
 						int8 componentType, uint64 componentID, int8 globalorderID, int8 grouporderID,
-						uint32 intaddr, uint16 intport, uint32 extaddr, uint16 extport)
+						uint32 intaddr, uint16 intport, uint32 extaddr, uint16 extport, std::string& extaddrEx)
 {
 	if(pChannel->isExternal())
 		return;
@@ -345,7 +346,7 @@ void ServerApp::onRegisterNewApp(Mercury::Channel* pChannel, int32 uid, std::str
 	if(cinfos == NULL)
 	{
 		Componentbridge::getComponents().addComponent(uid, username.c_str(), 
-			(KBEngine::COMPONENT_TYPE)componentType, componentID, globalorderID, grouporderID, intaddr, intport, extaddr, extport, 0,
+			(KBEngine::COMPONENT_TYPE)componentType, componentID, globalorderID, grouporderID, intaddr, intport, extaddr, extport, extaddrEx, 0,
 			0.f, 0.f, 0, 0, 0, 0, 0, pChannel);
 	}
 	else
@@ -443,9 +444,9 @@ void ServerApp::queryLoad(Mercury::Channel* pChannel)
 //-------------------------------------------------------------------------------------
 void ServerApp::hello(Mercury::Channel* pChannel, MemoryStream& s)
 {
-	std::string verInfo, encryptedKey;
+	std::string verInfo, scriptVerInfo, encryptedKey;
 
-	s >> verInfo;
+	s >> verInfo >> scriptVerInfo;
 	s.readBlob(encryptedKey);
 
 	char buf[1024];
@@ -468,18 +469,21 @@ void ServerApp::hello(Mercury::Channel* pChannel, MemoryStream& s)
 		buf[4] = '\0';
 	}
 
-	INFO_MSG(boost::format("ServerApp::onHello: verInfo=%1%, encryptedKey=%2%, addr:%3%\n") % 
-		verInfo % buf % pChannel->c_str());
+	INFO_MSG(boost::format("ServerApp::onHello: verInfo=%1%, scriptVerInfo=%2%, encryptedKey=%3%, addr:%4%\n") % 
+		verInfo % scriptVerInfo % buf % pChannel->c_str());
 
 	if(verInfo != KBEVersion::versionString())
 		onVersionNotMatch(pChannel);
+	else if(scriptVerInfo != KBEVersion::scriptVersionString())
+		onScriptVersionNotMatch(pChannel);
 	else
-		onHello(pChannel, verInfo, encryptedKey);
+		onHello(pChannel, verInfo, scriptVerInfo, encryptedKey);
 }
 
 //-------------------------------------------------------------------------------------
 void ServerApp::onHello(Mercury::Channel* pChannel, 
 						const std::string& verInfo, 
+						const std::string& scriptVerInfo, 
 						const std::string& encryptedKey)
 {
 }
@@ -487,6 +491,45 @@ void ServerApp::onHello(Mercury::Channel* pChannel,
 //-------------------------------------------------------------------------------------
 void ServerApp::onVersionNotMatch(Mercury::Channel* pChannel)
 {
+}
+
+//-------------------------------------------------------------------------------------
+void ServerApp::onScriptVersionNotMatch(Mercury::Channel* pChannel)
+{
+}
+
+//-------------------------------------------------------------------------------------
+void ServerApp::startProfile(Mercury::Channel* pChannel, KBEngine::MemoryStream& s)
+{
+	std::string profileName;
+	int8 profileType;
+	uint32 timelen;
+
+	s >> profileName >> profileType >> timelen;
+
+	startProfile_(pChannel, profileName, profileType, timelen);
+}
+
+//-------------------------------------------------------------------------------------
+void ServerApp::startProfile_(Mercury::Channel* pChannel, std::string profileName, int8 profileType, uint32 timelen)
+{
+	switch(profileType)
+	{
+	case 1:	// cprofile
+		new CProfileHandler(this->getNetworkInterface(), timelen, profileName, pChannel->addr());
+		break;
+	case 2:	// eventprofile
+		new EventProfileHandler(this->getNetworkInterface(), timelen, profileName, pChannel->addr());
+		break;
+	case 3:	// mercuryprofile
+		new MercuryProfileHandler(this->getNetworkInterface(), timelen, profileName, pChannel->addr());
+		break;
+	default:
+		ERROR_MSG(boost::format("ServerApp::startProfile_: type(%1%:%2%) not support!\n") % 
+			profileType % profileName);
+
+		break;
+	};
 }
 
 //-------------------------------------------------------------------------------------		

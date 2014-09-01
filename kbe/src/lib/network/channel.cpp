@@ -146,7 +146,7 @@ Channel::Channel():
 //-------------------------------------------------------------------------------------
 Channel::~Channel()
 {
-	DEBUG_MSG(boost::format("Channel::~Channel(): %1%\n") % this->c_str());
+	//DEBUG_MSG(boost::format("Channel::~Channel(): %1%\n") % this->c_str());
 	if(pNetworkInterface_ != NULL && pEndPoint_ != NULL && !isDestroyed_)
 	{
 		pNetworkInterface_->onChannelGone(this);
@@ -339,9 +339,10 @@ void Channel::send(Bundle * pBundle)
 	}
 	
 	if(pBundle)
-	{
 		bundles_.push_back(pBundle);
-	}
+
+	if(bundles_.size() == 0)
+		return;
 
 	Bundles::iterator iter = bundles_.begin();
 	for(; iter != bundles_.end(); iter++)
@@ -441,7 +442,7 @@ void Channel::onPacketReceived(int bytes)
 		if(g_extReceiveWindowBytesOverflow > 0 && 
 			lastTickBytesReceived_ >= g_extReceiveWindowBytesOverflow)
 		{
-			WARNING_MSG(boost::format("Channel::onPacketReceived[%1%]: external channel(%2%), bufferedBytes is overflow(%3% > %4%).\n") % 
+			ERROR_MSG(boost::format("Channel::onPacketReceived[%1%]: external channel(%2%), bufferedBytes is overflow(%3% > %4%), Try adjusting the kbengine_defs.xml->receiveWindowOverflow.\n") % 
 				this % this->c_str() % lastTickBytesReceived_ % g_extReceiveWindowBytesOverflow);
 
 			this->condemn();
@@ -473,7 +474,7 @@ void Channel::addReceiveWindow(Packet* pPacket)
 			if(Mercury::g_extReceiveWindowMessagesOverflow > 0 && 
 				bufferedReceives_[bufferedReceivesIdx_].size() >  Mercury::g_extReceiveWindowMessagesOverflow)
 			{
-				ERROR_MSG(boost::format("Channel::addReceiveWindow[%1%]: external channel(%2%), bufferedMessages is overflow(%3% > %4%).\n") % 
+				ERROR_MSG(boost::format("Channel::addReceiveWindow[%1%]: external channel(%2%), bufferedMessages is overflow(%3% > %4%), Try adjusting the kbengine_defs.xml->receiveWindowOverflow.\n") % 
 					this % this->c_str() % (int)bufferedReceives_[bufferedReceivesIdx_].size() % Mercury::g_extReceiveWindowMessagesOverflow);
 
 				this->condemn();

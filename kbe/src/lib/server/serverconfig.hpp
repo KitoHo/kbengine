@@ -22,8 +22,9 @@ along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 		ServerConfig::getSingleton().loadConfig("../../res/server/KBEngine.xml");
 		ENGINE_COMPONENT_INFO& ecinfo = ServerConfig::getSingleton().getCellApp();													
 */
-#ifndef __SERVER_CONFIG_H__
-#define __SERVER_CONFIG_H__
+#ifndef KBE_SERVER_CONFIG_HPP
+#define KBE_SERVER_CONFIG_HPP
+
 #define __LIB_DLLAPI__	
 // common include
 #include "cstdkbe/cstdkbe.hpp"
@@ -108,9 +109,12 @@ typedef struct EngineComponentInfo
 	{
 		tcp_SOMAXCONN = 5;
 		notFoundAccountAutoCreate = false;
+		account_registration_enable = false;
 		use_coordinate_system = true;
 		account_type = 3;
 		debugDBMgr = false;
+
+		externalAddress[0] = '\0';
 	}
 
 	~EngineComponentInfo()
@@ -142,6 +146,7 @@ typedef struct EngineComponentInfo
 
 	char internalInterface[MAX_NAME];						// 内部网卡接口名称
 	char externalInterface[MAX_NAME];						// 外部网卡接口名称
+	char externalAddress[MAX_NAME];							// 外部IP地址
 	int32 externalPorts_min;								// 对外socket端口使用指定范围
 	int32 externalPorts_max;
 
@@ -156,7 +161,8 @@ typedef struct EngineComponentInfo
 	std::string db_unicodeString_collation;
 	bool notFoundAccountAutoCreate;							// 登录合法时游戏数据库找不到游戏账号则自动创建
 	bool db_passwordEncrypt;								// db密码是否是加密的
-	bool allowEmptyDigest;
+	bool allowEmptyDigest;									// 是否检查defs-MD5
+	bool account_registration_enable;						// 是否开放注册
 
 	float archivePeriod;									// entity存储数据库周期
 	float backupPeriod;										// entity备份周期
@@ -177,6 +183,9 @@ typedef struct EngineComponentInfo
 	uint32 defaultAddBots_totalCount;						// 默认启动进程后自动添加这么多个bots 添加总数量
 	float defaultAddBots_tickTime;							// 默认启动进程后自动添加这么多个bots 每次添加所用时间(s)
 	uint32 defaultAddBots_tickCount;						// 默认启动进程后自动添加这么多个bots 每次添加数量
+
+	std::string bots_account_name_prefix;					// 机器人账号名称的前缀
+	uint32 bots_account_name_suffix_inc;					// 机器人账号名称的后缀递增, 0使用随机数递增， 否则按照baseNum填写的数递增
 
 	uint32 tcp_SOMAXCONN;									// listen监听队列最大值
 
@@ -224,6 +233,8 @@ public:
 
 	INLINE ENGINE_COMPONENT_INFO& getComponent(COMPONENT_TYPE componentType);
  	
+	INLINE ENGINE_COMPONENT_INFO& getConfig();
+
  	void updateInfos(bool isPrint, COMPONENT_TYPE componentType, COMPONENT_ID componentID, 
  				const Mercury::Address& internalAddr, const Mercury::Address& externalAddr);
  	
@@ -248,6 +259,11 @@ public:
 	float shutdowntime(){ return shutdown_time_; }
 	float shutdownWaitTickTime(){ return shutdown_waitTickTime_; }
 
+	uint32 tickMaxBufferedLogs()const { return tick_max_buffered_logs_; }
+	uint32 tickMaxSyncLogs()const { return tick_max_sync_logs_; }
+private:
+	void _updateEmailInfos();
+
 private:
 	ENGINE_COMPONENT_INFO _cellAppInfo;
 	ENGINE_COMPONENT_INFO _baseAppInfo;
@@ -263,6 +279,8 @@ private:
 	ENGINE_COMPONENT_INFO _billingInfo;
 public:
 	int16 gameUpdateHertz_;
+	uint32 tick_max_buffered_logs_;
+	uint32 tick_max_sync_logs_;
 
 	ChannelCommon channelCommon_;
 
@@ -301,4 +319,4 @@ public:
 #ifdef CODE_INLINE
 #include "serverconfig.ipp"
 #endif
-#endif
+#endif // KBE_SERVER_CONFIG_HPP

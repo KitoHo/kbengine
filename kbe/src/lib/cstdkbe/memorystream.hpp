@@ -18,8 +18,8 @@ You should have received a copy of the GNU Lesser General Public License
 along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef __MEMORYSTREAM_H__
-#define __MEMORYSTREAM_H__
+#ifndef KBE_MEMORYSTREAM_HPP
+#define KBE_MEMORYSTREAM_HPP
 // common include	
 #include <iostream>
 #include <vector>
@@ -99,6 +99,7 @@ public:
 
 	typedef KBEShared_ptr< SmartPoolObject< MemoryStream > > SmartPoolObjectPtr;
 	static SmartPoolObjectPtr createSmartPoolObj();
+	virtual size_t getPoolObjectBytes();
 
     const static size_t DEFAULT_SIZE = 0x1000;
     MemoryStream(): rpos_(0), wpos_(0)

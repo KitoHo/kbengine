@@ -3,7 +3,9 @@ import KBEngine
 import random
 import time
 import d_spaces
+from AVATAR_INFOS import TAvatarInfos
 from AVATAR_INFOS import TAvatarInfosList
+from AVATAR_DATA import TAvatarData
 from KBEDebug import *
 import d_avatar_inittab
 
@@ -28,7 +30,8 @@ class Account(KBEngine.Proxy):
 		该entity被正式激活为可使用， 此时entity已经建立了client对应实体， 可以在此创建它的
 		cell部分。
 		"""
-		INFO_MSG("Account[%i]::onEntitiesEnabled:entities enable. mailbox:%s, clientType(%i), hasAvatar=%s" % (self.id, self.client, self.getClientType(), self.activeCharacter))
+		INFO_MSG("Account[%i]::onEntitiesEnabled:entities enable. mailbox:%s, clientType(%i), hasAvatar=%s, accountName=%s" % \
+			(self.id, self.client, self.getClientType(), self.activeCharacter, self.__ACCOUNT_NAME__))
 			
 	def onLogOnAttempt(self, ip, port, password):
 		"""
@@ -82,7 +85,8 @@ class Account(KBEngine.Proxy):
 		exposed.
 		客户端请求创建一个角色
 		"""
-		avatarinfo = {"name": name, "dbid": 0, "roleType" : roleType, "level" : 0, "data" : b'kbengine'}
+		avatarinfo = TAvatarInfos()
+		avatarinfo.extend([0, "", 0, 0, TAvatarData().createFromDict({"param1" : 0, "param2" :b''})])
 			
 		"""
 		if name in all_avatar_names:
@@ -149,14 +153,18 @@ class Account(KBEngine.Proxy):
 		新建角色写入数据库回调
 		"""
 		INFO_MSG('Account::_onCharacterSaved:(%i) create avatar state: %i, %s, %i' % (self.id, success, avatar.cellData["name"], avatar.databaseID))
-		avatarinfo = {"name": "", "dbid": 0, "roleType" : 0, "level" : 0, "data" : b''}
 		
+		avatarinfo = TAvatarInfos()
+		avatarinfo.extend([0, "", 0, 0, TAvatarData().createFromDict({"param1" : 0, "param2" :b''})])
+
 		if success:
-			self.characters[avatar.databaseID] = [avatar.cellData["name"], avatar.roleType, 1, b'kbengine']
-			avatarinfo["dbid"] = avatar.databaseID
-			avatarinfo["name"] = avatar.cellData["name"]
-			avatarinfo["roleType"] = avatar.roleType
-			avatarinfo["level"] = 1
+			info = TAvatarInfos()
+			info.extend([avatar.databaseID, avatar.cellData["name"], avatar.roleType, 1, TAvatarData().createFromDict({"param1" : 1, "param2" :b'1'})])
+			self.characters[avatar.databaseID] = info
+			avatarinfo[0] = avatar.databaseID
+			avatarinfo[1] = avatar.cellData["name"]
+			avatarinfo[2] = avatar.roleType
+			avatarinfo[3] = 1
 			self.writeToDB()
 
 			avatar.destroy()
@@ -202,9 +210,9 @@ class Account(KBEngine.Proxy):
 			return
 			
 		info = self.characters[dbid]
-		avatar.cellData["modelID"] = d_avatar_inittab.datas[info[1]]["modelID"]
-		avatar.cellData["modelScale"] = d_avatar_inittab.datas[info[1]]["modelScale"]
-		avatar.cellData["moveSpeed"] = d_avatar_inittab.datas[info[1]]["moveSpeed"]
+		avatar.cellData["modelID"] = d_avatar_inittab.datas[info[2]]["modelID"]
+		avatar.cellData["modelScale"] = d_avatar_inittab.datas[info[2]]["modelScale"]
+		avatar.cellData["moveSpeed"] = d_avatar_inittab.datas[info[2]]["moveSpeed"]
 		avatar.accountEntity = self
 		self.activeCharacter = avatar
 		self.giveClientTo(avatar)

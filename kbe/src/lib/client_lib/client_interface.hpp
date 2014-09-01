@@ -19,12 +19,12 @@ along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 #if defined(DEFINE_IN_INTERFACE)
-	#undef __CLIENT_INTERFACE_H__
+	#undef KBE_CLIENT_INTERFACE_HPP
 #endif
 
 
-#ifndef __CLIENT_INTERFACE_H__
-#define __CLIENT_INTERFACE_H__
+#ifndef KBE_CLIENT_INTERFACE_HPP
+#define KBE_CLIENT_INTERFACE_HPP
 
 // common include	
 #if defined(CLIENT)
@@ -54,6 +54,9 @@ NETWORK_INTERFACE_DECLARE_BEGIN(ClientInterface)
 
 	// 和服务端的版本不匹配
 	CLIENT_MESSAGE_DECLARE_STREAM(onVersionNotMatch,						MERCURY_VARIABLE_MESSAGE)
+
+	// 和服务端的脚本层版本不匹配
+	CLIENT_MESSAGE_DECLARE_STREAM(onScriptVersionNotMatch,					MERCURY_VARIABLE_MESSAGE)
 
 	// 创建账号失败。
 	CLIENT_MESSAGE_DECLARE_STREAM(onCreateAccountResult,					MERCURY_VARIABLE_MESSAGE)
@@ -89,14 +92,11 @@ NETWORK_INTERFACE_DECLARE_BEGIN(ClientInterface)
 									ENTITY_ID,								eid)
 
 	// 服务器上的entity已经进入space了。
-	CLIENT_MESSAGE_DECLARE_ARGS2(onEntityEnterSpace,						MERCURY_FIXED_MESSAGE,
-									ENTITY_ID,								eid,
-									SPACE_ID,								spaceID)
+	CLIENT_MESSAGE_DECLARE_STREAM(onEntityEnterSpace,						MERCURY_VARIABLE_MESSAGE)
 
 	// 服务器上的entity已经离开space了。
-	CLIENT_MESSAGE_DECLARE_ARGS2(onEntityLeaveSpace,						MERCURY_FIXED_MESSAGE,
-									ENTITY_ID,								eid,
-									SPACE_ID,								spaceID)
+	CLIENT_MESSAGE_DECLARE_ARGS1(onEntityLeaveSpace,						MERCURY_FIXED_MESSAGE,
+									ENTITY_ID,								eid)
 
 	// 远程呼叫entity方法
 	CLIENT_MESSAGE_DECLARE_STREAM(onRemoteMethodCall,						MERCURY_VARIABLE_MESSAGE)
@@ -192,6 +192,9 @@ NETWORK_INTERFACE_DECLARE_BEGIN(ClientInterface)
 	// 重置账号密码请求返回
 	CLIENT_MESSAGE_DECLARE_ARGS1(onReqAccountNewPasswordCB,					MERCURY_FIXED_MESSAGE,
 									SERVER_ERROR_CODE,						failedcode)
+
+	// 重登陆网关成功 
+	CLIENT_MESSAGE_DECLARE_ARGS0(onReLoginGatewaySuccessfully,				MERCURY_FIXED_MESSAGE)
 									
 NETWORK_INTERFACE_DECLARE_END()
 
@@ -200,4 +203,5 @@ NETWORK_INTERFACE_DECLARE_END()
 #endif
 
 }
-#endif
+
+#endif // KBE_CLIENT_INTERFACE_HPP

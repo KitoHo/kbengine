@@ -149,8 +149,7 @@ hasLostConnection_(false),
 inTransaction_(false),
 lock_(NULL, false),
 characterSet_(characterSet),
-collation_(collation),
-lastquery_()
+collation_(collation)
 {
 	lock_.pdbi(this);
 }
@@ -201,6 +200,7 @@ bool DBInterfaceMysql::attach(const char* databaseName)
 		{
 			ERROR_MSG(boost::format("DBInterfaceMysql::attach: mysql_errno=%1%, mysql_error=%2%\n") %
 				mysql_errno(pMysql_) % mysql_error(pMysql_));
+
 			return false;
 		}
 
@@ -208,6 +208,9 @@ bool DBInterfaceMysql::attach(const char* databaseName)
 		{
 			ERROR_MSG("DBInterfaceMysql::attach: Could not set client connection character set to UTF-8\n" );
 		}
+
+		// 关闭自动提交
+		mysql_autocommit(mysql(), 0);
 
 		char characterset_sql[MAX_BUF];
 		kbe_snprintf(characterset_sql, MAX_BUF, "ALTER DATABASE CHARACTER SET %s COLLATE %s", 
@@ -367,7 +370,7 @@ bool DBInterfaceMysql::query(const char* strCommand, uint32 size, bool showexeci
 
 	if(_g_debug)
 	{
-		DEBUG_MSG(boost::format("DBInterfaceMysql::query: %1%\n") % lastquery_);
+		DEBUG_MSG(boost::format("DBInterfaceMysql::query(%1%): %2%\n") % this % lastquery_);
 	}
 
     int nResult = mysql_real_query(pMysql_, strCommand, size);  

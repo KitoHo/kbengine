@@ -100,7 +100,7 @@ namespace Mercury
 {
 
 //-------------------------------------------------------------------------------------
-static ObjectPool<Bundle> _g_objPool;
+static ObjectPool<Bundle> _g_objPool("Bundle");
 ObjectPool<Bundle>& Bundle::ObjPool()
 {
 	return _g_objPool;
@@ -113,6 +113,17 @@ void Bundle::destroyObjPool()
 		_g_objPool.size());
 
 	_g_objPool.destroy();
+}
+
+//-------------------------------------------------------------------------------------
+size_t Bundle::getPoolObjectBytes()
+{
+	size_t bytes = sizeof(reuse_) + sizeof(pCurrMsgHandler_) + sizeof(isTCPPacket_) + 
+		sizeof(currMsgLengthPos_) + sizeof(currMsgHandlerLength_) + sizeof(currMsgLength_) + 
+		sizeof(currMsgPacketCount_) + sizeof(currMsgID_) + sizeof(numMessages_) + sizeof(pChannel_)
+		+ (packets_.size() * sizeof(Packet*));
+
+	return bytes;
 }
 
 //-------------------------------------------------------------------------------------
@@ -278,6 +289,12 @@ void Bundle::finish(bool issend)
 //-------------------------------------------------------------------------------------
 void Bundle::clear(bool isRecl)
 {
+	if(pCurrPacket_ != NULL)
+	{
+		packets_.push_back(pCurrPacket_);
+		pCurrPacket_ = NULL;
+	}
+
 	Packets::iterator iter = packets_.begin();
 	for (; iter != packets_.end(); iter++)
 	{
@@ -295,23 +312,6 @@ void Bundle::clear(bool isRecl)
 	}
 	
 	packets_.clear();
-
-	if(pCurrPacket_)
-	{
-		if(!isRecl)
-		{
-			delete pCurrPacket_;
-		}
-		else
-		{
-			if(isTCPPacket_)
-				TCPPacket::ObjPool().reclaimObject(static_cast<TCPPacket*>(pCurrPacket_));
-			else
-				UDPPacket::ObjPool().reclaimObject(static_cast<UDPPacket*>(pCurrPacket_));
-		}
-
-		pCurrPacket_ = NULL;
-	}
 
 	reuse_ = false;
 	pChannel_ = NULL;

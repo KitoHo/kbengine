@@ -19,6 +19,7 @@ along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 */
 #include "controller.hpp"	
 #include "controllers.hpp"	
+#include "cstdkbe/memorystream.hpp"	
 
 namespace KBEngine{	
 
@@ -30,6 +31,16 @@ pEntity_(pEntity),
 userarg_(userarg),
 pControllers_(0),
 type_(type)
+{
+}
+
+//-------------------------------------------------------------------------------------
+Controller::Controller(Entity* pEntity):
+id_(0),
+pEntity_(pEntity),
+userarg_(0),
+pControllers_(0),
+type_(CONTROLLER_TYPE_NORMAL)
 {
 }
 
@@ -47,6 +58,18 @@ void Controller::destroy()
 		ERROR_MSG(boost::format("Controller::destroy(): not found %1%.\n") % 
 			id_);
 	}
+}
+
+//-------------------------------------------------------------------------------------
+void Controller::addToStream(KBEngine::MemoryStream& s)
+{
+	s << id_ << userarg_;
+}
+
+//-------------------------------------------------------------------------------------
+void Controller::createFromStream(KBEngine::MemoryStream& s)
+{
+	s >> id_ >> userarg_;
 }
 
 //-------------------------------------------------------------------------------------

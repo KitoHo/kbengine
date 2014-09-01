@@ -55,8 +55,8 @@ along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 		// 分配一个id 
 		m_idClient->alloc()
 */
-#ifndef __IDAllocate_H__
-#define __IDAllocate_H__
+#ifndef KBE_IDALLOCATE_HPP
+#define KBE_IDALLOCATE_HPP
 
 // common include	
 #include "helper/debug_helper.hpp"
@@ -110,6 +110,9 @@ public:
 	virtual void reclaim(T id)
 	{
 	}
+
+	T lastID()const{ return lastID_; }
+	void lastID(T v){ lastID_ = v; }
 protected:
 	T lastID_;													// 最后一次申请到的ID
 };
@@ -322,4 +325,5 @@ protected:
 };
 
 }
-#endif
+
+#endif // KBE_IDALLOCATE_HPP

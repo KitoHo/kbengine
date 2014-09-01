@@ -20,6 +20,7 @@ along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 
 #include "pybots.hpp"
 #include "bots.hpp"
+#include "server/telnet_server.hpp"
 #include "client_lib/entity.hpp"
 #include "clientobject.hpp"
 #include "bots_interface.hpp"
@@ -31,13 +32,19 @@ along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 #include "thread/threadpool.hpp"
 #include "server/componentbridge.hpp"
 #include "server/serverconfig.hpp"
+#include "helper/watch_pools.hpp"
 #include "helper/console_helper.hpp"
+#include "helper/watcher.hpp"
+#include "helper/profile.hpp"
+#include "helper/profiler.hpp"
+#include "helper/profile_handler.hpp"
+#include "pyscript/pyprofile_handler.hpp"
 
 #include "../../../server/baseapp/baseapp_interface.hpp"
 #include "../../../server/loginapp/loginapp_interface.hpp"
 
 namespace KBEngine{
-ServerConfig g_serverConfig;
+
 Componentbridge* g_pComponentbridge = NULL;
 
 //-------------------------------------------------------------------------------------
@@ -48,11 +55,12 @@ Bots::Bots(Mercury::EventDispatcher& dispatcher,
 ClientApp(dispatcher, ninterface, componentType, componentID),
 pPyBots_(NULL),
 clients_(),
-reqCreateAndLoginTotalCount_(g_serverConfig.getBots().defaultAddBots_totalCount),
-reqCreateAndLoginTickCount_(g_serverConfig.getBots().defaultAddBots_tickCount),
-reqCreateAndLoginTickTime_(g_serverConfig.getBots().defaultAddBots_tickTime),
+reqCreateAndLoginTotalCount_(g_kbeSrvConfig.getBots().defaultAddBots_totalCount),
+reqCreateAndLoginTickCount_(g_kbeSrvConfig.getBots().defaultAddBots_tickCount),
+reqCreateAndLoginTickTime_(g_kbeSrvConfig.getBots().defaultAddBots_tickTime),
 pCreateAndLoginHandler_(NULL),
-pEventPoller_(Mercury::EventPoller::create())
+pEventPoller_(Mercury::EventPoller::create()),
+pTelnetServer_(NULL)
 {
 	KBEngine::Mercury::MessageHandlers::pMainMessageHandlers = &BotsInterface::messageHandlers;
 	g_pComponentbridge = new Componentbridge(ninterface, componentType, componentID);
@@ -86,6 +94,16 @@ bool Bots::initializeBegin()
 //-------------------------------------------------------------------------------------	
 bool Bots::initializeEnd()
 {
+	pTelnetServer_ = new TelnetServer(&getMainDispatcher(), &getNetworkInterface());
+	pTelnetServer_->pScript(&getScript());
+	if(!pTelnetServer_->start(g_kbeSrvConfig.getBots().telnet_passwd, 
+		g_kbeSrvConfig.getBots().telnet_deflayer, 
+		g_kbeSrvConfig.getBots().telnet_port))
+	{
+		ERROR_MSG("Bots::initialize: initializeEnd is error!\n");
+		return false;
+	}
+
 	return true;
 }
 
@@ -94,6 +112,11 @@ void Bots::finalise()
 {
 	reqCreateAndLoginTotalCount_ = 0;
 	SAFE_RELEASE(pCreateAndLoginHandler_);
+	
+	if(pTelnetServer_)
+		pTelnetServer_->stop();
+	SAFE_RELEASE(pTelnetServer_);
+
 	ClientApp::finalise();
 }
 
@@ -189,15 +212,18 @@ void Bots::handleGameTick()
 
 	pEventPoller_->processPendingEvents(0.0);
 
-	CLIENTS::iterator iter = clients().begin();
-	for(;iter != clients().end(); iter++)
-		iter->second.get()->gameTick();
+	{
+		AUTO_SCOPED_PROFILE("updateBots");
+		CLIENTS::iterator iter = clients().begin();
+		for(;iter != clients().end(); iter++)
+			iter->second.get()->gameTick();
+	}
 }
 
 //-------------------------------------------------------------------------------------
 Mercury::Channel* Bots::findChannelByMailbox(EntityMailbox& mailbox)
 {
-	int32 appID = (int32)mailbox.getComponentID();
+	int32 appID = (int32)mailbox.componentID();
 	ClientObject* pClient = findClientByAppID(appID);
 
 	if(pClient)
@@ -445,12 +471,12 @@ void Bots::onAppActiveTick(Mercury::Channel* pChannel, COMPONENT_TYPE componentT
 
 //-------------------------------------------------------------------------------------
 void Bots::onHelloCB_(Mercury::Channel* pChannel, const std::string& verInfo, 
-		COMPONENT_TYPE componentType)
+		const std::string& scriptVerInfo, COMPONENT_TYPE componentType)
 {
 	ClientObject* pClient = findClient(pChannel);
 	if(pClient)
 	{
-		pClient->onHelloCB_(pChannel, verInfo, componentType);
+		pClient->onHelloCB_(pChannel, verInfo, scriptVerInfo, componentType);
 	}
 }
 
@@ -461,6 +487,16 @@ void Bots::onVersionNotMatch(Mercury::Channel* pChannel, MemoryStream& s)
 	if(pClient)
 	{
 		pClient->onVersionNotMatch(pChannel, s);
+	}
+}
+
+//-------------------------------------------------------------------------------------	
+void Bots::onScriptVersionNotMatch(Mercury::Channel* pChannel, MemoryStream& s)
+{
+	ClientObject* pClient = findClient(pChannel);
+	if(pClient)
+	{
+		pClient->onScriptVersionNotMatch(pChannel, s);
 	}
 }
 
@@ -501,6 +537,16 @@ void Bots::onLoginGatewayFailed(Mercury::Channel * pChannel, SERVER_ERROR_CODE f
 	if(pClient)
 	{
 		pClient->onLoginGatewayFailed(pChannel, failedcode);
+	}
+}
+
+//-------------------------------------------------------------------------------------	
+void Bots::onReLoginGatewaySuccessfully(Mercury::Channel * pChannel)
+{
+	ClientObject* pClient = findClient(pChannel);
+	if(pClient)
+	{
+		pClient->onReLoginGatewaySuccessfully(pChannel);
 	}
 }
 
@@ -546,22 +592,22 @@ void Bots::onEntityLeaveWorldOptimized(Mercury::Channel * pChannel, MemoryStream
 }
 
 //-------------------------------------------------------------------------------------	
-void Bots::onEntityEnterSpace(Mercury::Channel * pChannel, SPACE_ID spaceID, ENTITY_ID eid)
+void Bots::onEntityEnterSpace(Mercury::Channel * pChannel, MemoryStream& s)
 {
 	ClientObject* pClient = findClient(pChannel);
 	if(pClient)
 	{
-		pClient->onEntityEnterSpace(pChannel, eid, spaceID);
+		pClient->onEntityEnterSpace(pChannel, s);
 	}
 }
 
 //-------------------------------------------------------------------------------------	
-void Bots::onEntityLeaveSpace(Mercury::Channel * pChannel, SPACE_ID spaceID, ENTITY_ID eid)
+void Bots::onEntityLeaveSpace(Mercury::Channel * pChannel, ENTITY_ID eid)
 {
 	ClientObject* pClient = findClient(pChannel);
 	if(pClient)
 	{
-		pClient->onEntityLeaveSpace(pChannel, eid, spaceID);
+		pClient->onEntityLeaveSpace(pChannel, eid);
 	}
 }
 
@@ -943,6 +989,76 @@ void Bots::delSpaceData(Mercury::Channel* pChannel, SPACE_ID spaceID, const std:
 	{
 		pClient->delSpaceData(pChannel, spaceID, key);
 	}
+}
+
+//-------------------------------------------------------------------------------------		
+void Bots::queryWatcher(Mercury::Channel* pChannel, MemoryStream& s)
+{
+	AUTO_SCOPED_PROFILE("watchers");
+
+	std::string path;
+	s >> path;
+
+	MemoryStream::SmartPoolObjectPtr readStreamPtr = MemoryStream::createSmartPoolObj();
+	WatcherPaths::root().readWatchers(path, readStreamPtr.get()->get());
+
+	MemoryStream::SmartPoolObjectPtr readStreamPtr1 = MemoryStream::createSmartPoolObj();
+	WatcherPaths::root().readChildPaths(path, path, readStreamPtr1.get()->get());
+
+	Mercury::Bundle bundle;
+	ConsoleInterface::ConsoleWatcherCBMessageHandler msgHandler;
+	bundle.newMessage(msgHandler);
+
+	uint8 type = 0;
+	bundle << type;
+	bundle.append(readStreamPtr.get()->get());
+	bundle.send(getNetworkInterface(), pChannel);
+
+	Mercury::Bundle bundle1;
+	bundle1.newMessage(msgHandler);
+
+	type = 1;
+	bundle1 << type;
+	bundle1.append(readStreamPtr1.get()->get());
+	bundle1.send(getNetworkInterface(), pChannel);
+}
+
+
+//-------------------------------------------------------------------------------------
+void Bots::startProfile(Mercury::Channel* pChannel, KBEngine::MemoryStream& s)
+{
+	std::string profileName;
+	int8 profileType;
+	uint32 timelen;
+
+	s >> profileName >> profileType >> timelen;
+
+	startProfile_(pChannel, profileName, profileType, timelen);
+}
+
+//-------------------------------------------------------------------------------------
+void Bots::startProfile_(Mercury::Channel* pChannel, std::string profileName, int8 profileType, uint32 timelen)
+{
+	switch(profileType)
+	{
+	case 0:	// pyprofile
+		new PyProfileHandler(this->getNetworkInterface(), timelen, profileName, pChannel->addr());
+		break;
+	case 1:	// cprofile
+		new CProfileHandler(this->getNetworkInterface(), timelen, profileName, pChannel->addr());
+		break;
+	case 2:	// eventprofile
+		new EventProfileHandler(this->getNetworkInterface(), timelen, profileName, pChannel->addr());
+		break;
+	case 3:	// mercuryprofile
+		new MercuryProfileHandler(this->getNetworkInterface(), timelen, profileName, pChannel->addr());
+		break;
+	default:
+		ERROR_MSG(boost::format("Bots::startProfile_: type(%1%:%2%) not support!\n") % 
+			profileType % profileName);
+
+		break;
+	};
 }
 
 //-------------------------------------------------------------------------------------

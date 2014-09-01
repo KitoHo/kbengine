@@ -190,7 +190,7 @@ public:
 				return false;
 			}
 
-			MachineInterface::onBroadcastInterfaceArgs21 args;
+			MachineInterface::onBroadcastInterfaceArgs22 args;
 			int32 timeout = 100000;
 RESTART_RECV:
 			if(bhandler.receive(&args, 0, timeout))
@@ -227,7 +227,7 @@ RESTART_RECV:
 
 					Components::getSingleton().addComponent(args.uid, args.username.c_str(), 
 						(KBEngine::COMPONENT_TYPE)args.componentType, args.componentID, args.globalorderid, args.grouporderid, 
-						args.intaddr, args.intport, args.extaddr, args.extport, args.pid, args.cpu, args.mem, args.usedmem, 
+						args.intaddr, args.intport, args.extaddr, args.extport, args.extaddrEx, args.pid, args.cpu, args.mem, args.usedmem, 
 						args.extradata, args.extradata1, args.extradata2, args.extradata3);
 					
 					isContinue = true;
@@ -1142,7 +1142,16 @@ void CguiconsoleDlg::reqQueryWatcher(std::string paths)
 	if(pChannel)
 	{
 		Mercury::Bundle bundle;
-		COMMON_MERCURY_MESSAGE(debugComponentType, bundle, queryWatcher);
+
+		if(debugComponentType == BOTS_TYPE)
+		{
+			bundle.newMessage(BotsInterface::queryWatcher);
+		}
+		else
+		{
+			COMMON_MERCURY_MESSAGE(debugComponentType, bundle, queryWatcher);
+		}
+
 		bundle << paths;
 		bundle.send(_networkInterface, pChannel);
 	}
@@ -1649,14 +1658,41 @@ void CguiconsoleDlg::onReceiveWatcherData(MemoryStream& s)
 
 bool CguiconsoleDlg::startProfile(std::string name, int8 type, uint32 timinglen)
 {
+	if(type == 0)
+	{
+		if(getTreeItemComponent(m_tree.GetSelectedItem()) != BASEAPP_TYPE && getTreeItemComponent(m_tree.GetSelectedItem()) != CELLAPP_TYPE
+			&& getTreeItemComponent(m_tree.GetSelectedItem()) != BOTS_TYPE)
+		{
+			::AfxMessageBox(L"not support!");
+			return false;
+		}
+	}
+
 	Mercury::Channel* pChannel = _networkInterface.findChannel(this->getTreeItemAddr(m_tree.GetSelectedItem()));
 	if(pChannel)
 	{
 		Mercury::Bundle bundle;
 		if(getTreeItemComponent(m_tree.GetSelectedItem()) == BASEAPP_TYPE)
 			bundle.newMessage(BaseappInterface::startProfile);
-		else
+		else if(getTreeItemComponent(m_tree.GetSelectedItem()) == BASEAPPMGR_TYPE)
+			bundle.newMessage(BaseappmgrInterface::startProfile);
+		else if(getTreeItemComponent(m_tree.GetSelectedItem()) == CELLAPP_TYPE)
 			bundle.newMessage(CellappInterface::startProfile);
+		else if(getTreeItemComponent(m_tree.GetSelectedItem()) == CELLAPPMGR_TYPE)
+			bundle.newMessage(CellappmgrInterface::startProfile);
+		else if(getTreeItemComponent(m_tree.GetSelectedItem()) == DBMGR_TYPE)
+			bundle.newMessage(DbmgrInterface::startProfile);
+		else if(getTreeItemComponent(m_tree.GetSelectedItem()) == LOGINAPP_TYPE)
+			bundle.newMessage(LoginappInterface::startProfile);
+		else if(getTreeItemComponent(m_tree.GetSelectedItem()) == MESSAGELOG_TYPE)
+			bundle.newMessage(MessagelogInterface::startProfile);
+		else if(getTreeItemComponent(m_tree.GetSelectedItem()) == BOTS_TYPE)
+			bundle.newMessage(BotsInterface::startProfile);
+		else
+		{
+			::AfxMessageBox(L"not support!");
+			return false;
+		}
 
 		bundle << name;
 		bundle << type;

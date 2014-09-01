@@ -19,8 +19,8 @@ along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 
-#ifndef __BOTS_H__
-#define __BOTS_H__
+#ifndef KBE_BOTS_HPP
+#define KBE_BOTS_HPP
 	
 // common include	
 #include "profile.hpp"
@@ -53,6 +53,7 @@ namespace KBEngine{
 
 class ClientObject;
 class PyBots;
+class TelnetServer;
 typedef SmartPointer<ClientObject> ClientObjectPtr;
 
 class Bots  : public ClientApp
@@ -142,12 +143,17 @@ public:
 	void onAppActiveTick(Mercury::Channel* pChannel, COMPONENT_TYPE componentType, COMPONENT_ID componentID);
 
 	virtual void onHelloCB_(Mercury::Channel* pChannel, const std::string& verInfo, 
-		COMPONENT_TYPE componentType);
+		const std::string& scriptVerInfo, COMPONENT_TYPE componentType);
 
 	/** 网络接口
 		和服务端的版本不匹配
 	*/
 	virtual void onVersionNotMatch(Mercury::Channel* pChannel, MemoryStream& s);
+
+	/** 网络接口
+		和服务端的脚本层版本不匹配
+	*/
+	virtual void onScriptVersionNotMatch(Mercury::Channel* pChannel, MemoryStream& s);
 
 	/** 网络接口
 		创建账号成功和失败回调
@@ -186,6 +192,11 @@ public:
 	virtual void onLoginGatewayFailed(Mercury::Channel * pChannel, SERVER_ERROR_CODE failedcode);
 
 	/** 网络接口
+	   重登陆baseapp成功
+	*/
+	virtual void onReLoginGatewaySuccessfully(Mercury::Channel * pChannel);
+
+	/** 网络接口
 		服务器端已经创建了一个与客户端关联的代理Entity
 	   在登录时也可表达成功回调
 	   @datas: 账号entity的信息
@@ -213,12 +224,12 @@ public:
 	/** 网络接口
 		服务器上的entity已经进入space了
 	*/
-	virtual void onEntityEnterSpace(Mercury::Channel * pChannel, SPACE_ID spaceID, ENTITY_ID eid);
+	virtual void onEntityEnterSpace(Mercury::Channel * pChannel, MemoryStream& s);
 
 	/** 网络接口
 		服务器上的entity已经离开space了
 	*/
-	virtual void onEntityLeaveSpace(Mercury::Channel * pChannel, SPACE_ID spaceID, ENTITY_ID eid);
+	virtual void onEntityLeaveSpace(Mercury::Channel * pChannel, ENTITY_ID eid);
 
 	/** 网络接口
 		远程调用entity的方法 
@@ -300,6 +311,18 @@ public:
 	*/
 	void setSpaceData(Mercury::Channel* pChannel, SPACE_ID spaceID, const std::string& key, const std::string& value);
 	void delSpaceData(Mercury::Channel* pChannel, SPACE_ID spaceID, const std::string& key);
+
+	/** 网络接口
+		请求查看watcher
+	*/
+	void queryWatcher(Mercury::Channel* pChannel, MemoryStream& s);
+
+	/** 网络接口
+		console请求开始profile
+	*/
+	void startProfile(Mercury::Channel* pChannel, KBEngine::MemoryStream& s);
+	virtual void startProfile_(Mercury::Channel* pChannel, std::string profileName, int8 profileType, uint32 timelen);
+
 protected:
 	PyBots*													pPyBots_;
 
@@ -314,7 +337,10 @@ protected:
 	CreateAndLoginHandler*									pCreateAndLoginHandler_;
 
 	Mercury::EventPoller*									pEventPoller_;
+
+	TelnetServer*											pTelnetServer_;
 };
 
 }
-#endif
+
+#endif // KBE_BOTS_HPP

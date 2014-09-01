@@ -135,6 +135,13 @@ bool ClientApp::initializeEnd()
 		return false;
 	}
 
+	if(g_kbeConfig.useLastAccountName())
+	{
+		EventData_LastAccountInfo eventdata;
+		eventdata.name = g_kbeConfig.accountName();
+		eventHandler_.fire(&eventdata);
+	}
+
 	return true;
 }
 
@@ -179,6 +186,9 @@ bool ClientApp::installEntityDef()
 	APPEND_SCRIPT_MODULE_METHOD(getScript().getModule(),	getSpaceData,		__py_GetSpaceData,								METH_VARARGS,	0)
 	APPEND_SCRIPT_MODULE_METHOD(getScript().getModule(),	callback,			__py_callback,									METH_VARARGS,	0)
 	APPEND_SCRIPT_MODULE_METHOD(getScript().getModule(),	cancelCallback,		__py_cancelCallback,							METH_VARARGS,	0)
+	APPEND_SCRIPT_MODULE_METHOD(getScript().getModule(),	getWatcher,			__py_getWatcher,								METH_VARARGS,	0)
+	APPEND_SCRIPT_MODULE_METHOD(getScript().getModule(),	getWatcherDir,		__py_getWatcherDir,								METH_VARARGS,	0)
+	APPEND_SCRIPT_MODULE_METHOD(getScript().getModule(),	disconnect,			__py_disconnect,								METH_VARARGS,	0)
 	return true;
 }
 
@@ -290,11 +300,17 @@ void ClientApp::handleTimeout(TimerHandle, void * arg)
 }
 
 //-------------------------------------------------------------------------------------
+void ClientApp::onServerClosed()
+{
+	ClientObjectBase::onServerClosed();
+	state_ = C_STATE_INIT;
+}
+
+//-------------------------------------------------------------------------------------
 void ClientApp::handleGameTick()
 {
 	g_kbetime++;
 	threadPool_.onMainThreadTick();
-	handleTimers();
 	
 	if(lastAddr.ip != 0)
 	{
@@ -357,7 +373,8 @@ void ClientApp::handleGameTick()
 					Mercury::Bundle* pBundle = Mercury::Bundle::ObjPool().createObject();
 					(*pBundle).newMessage(BaseappInterface::hello);
 					(*pBundle) << KBEVersion::versionString();
-					
+					(*pBundle) << KBEVersion::scriptVersionString();
+
 					if(Mercury::g_channelExternalEncryptType == 1)
 					{
 						pBlowfishFilter_ = new Mercury::BlowfishFilter();
@@ -392,12 +409,6 @@ void ClientApp::handleGameTick()
 			KBE_ASSERT(false);
 			break;
 	};
-}
-
-//-------------------------------------------------------------------------------------
-void ClientApp::handleTimers()
-{
-	timers().process(g_kbetime);
 }
 
 //-------------------------------------------------------------------------------------		
@@ -576,6 +587,7 @@ bool ClientApp::login(std::string accountName, std::string passwd,
 		Mercury::Bundle* pBundle = Mercury::Bundle::ObjPool().createObject();
 		(*pBundle).newMessage(LoginappInterface::hello);
 		(*pBundle) << KBEVersion::versionString();
+		(*pBundle) << KBEVersion::scriptVersionString();
 
 		if(Mercury::g_channelExternalEncryptType == 1)
 		{
@@ -597,7 +609,7 @@ bool ClientApp::login(std::string accountName, std::string passwd,
 
 //-------------------------------------------------------------------------------------	
 void ClientApp::onHelloCB_(Mercury::Channel* pChannel, const std::string& verInfo, 
-		COMPONENT_TYPE componentType)
+		const std::string& scriptVerInfo, COMPONENT_TYPE componentType)
 {
 	if(Mercury::g_channelExternalEncryptType == 1)
 	{
@@ -622,12 +634,38 @@ void ClientApp::onVersionNotMatch(Mercury::Channel * pChannel, MemoryStream& s)
 }
 
 //-------------------------------------------------------------------------------------	
+void ClientApp::onScriptVersionNotMatch(Mercury::Channel * pChannel, MemoryStream& s)
+{
+	ClientObjectBase::onScriptVersionNotMatch(pChannel, s);
+}
+
+//-------------------------------------------------------------------------------------	
 void ClientApp::onLoginSuccessfully(Mercury::Channel * pChannel, MemoryStream& s)
 {
 	ClientObjectBase::onLoginSuccessfully(pChannel, s);
 	Config::getSingleton().writeAccountName(name_.c_str());
 
 	state_ = C_STATE_LOGIN_GATEWAY_CHANNEL;
+}
+
+//-------------------------------------------------------------------------------------	
+void ClientApp::onLoginFailed(Mercury::Channel * pChannel, MemoryStream& s)
+{
+	ClientObjectBase::onLoginFailed(pChannel, s);
+	canReset_ = true;
+}
+
+//-------------------------------------------------------------------------------------	
+void ClientApp::onLoginGatewayFailed(Mercury::Channel * pChannel, SERVER_ERROR_CODE failedcode)
+{
+	ClientObjectBase::onLoginGatewayFailed(pChannel, failedcode);
+	canReset_ = true;
+}
+
+//-------------------------------------------------------------------------------------	
+void ClientApp::onReLoginGatewaySuccessfully(Mercury::Channel * pChannel)
+{
+	ClientObjectBase::onReLoginGatewaySuccessfully(pChannel);
 }
 
 //-------------------------------------------------------------------------------------	

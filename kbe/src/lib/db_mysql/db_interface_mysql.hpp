@@ -18,8 +18,8 @@ You should have received a copy of the GNU Lesser General Public License
 along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef __KBE_DB_INTERFACE_MYSQL__
-#define __KBE_DB_INTERFACE_MYSQL__
+#ifndef KBE_DB_INTERFACE_MYSQL_HPP
+#define KBE_DB_INTERFACE_MYSQL_HPP
 
 #include "common.hpp"
 #include "db_transaction.hpp"
@@ -119,6 +119,7 @@ public:
 	{
 		if(pMysql_ == NULL)
 			return "pMysql is NULL";
+
 		return mysql_error( pMysql_ ); 
 	}
 
@@ -162,11 +163,6 @@ public:
 		处理异常
 	*/
 	bool processException(std::exception & e);
-
-	/**
-		获取最后一次查询的sql语句
-	*/
-	std::string lastquery()const{ return lastquery_; }
 protected:
 	MYSQL* pMysql_;
 
@@ -178,11 +174,9 @@ protected:
 
 	std::string characterSet_;
 	std::string collation_;
-	
-	std::string lastquery_;
 };
 
 
 }
 
-#endif // __KBE_DB_INTERFACE_MYSQL__
+#endif // KBE_DB_INTERFACE_MYSQL_HPP

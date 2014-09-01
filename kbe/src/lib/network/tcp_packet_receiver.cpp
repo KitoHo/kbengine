@@ -38,7 +38,7 @@ namespace Mercury
 {
 
 //-------------------------------------------------------------------------------------
-static ObjectPool<TCPPacketReceiver> _g_objPool;
+static ObjectPool<TCPPacketReceiver> _g_objPool("TCPPacketReceiver");
 ObjectPool<TCPPacketReceiver>& TCPPacketReceiver::ObjPool()
 {
 	return _g_objPool;
@@ -71,7 +71,6 @@ TCPPacketReceiver::~TCPPacketReceiver()
 {
 	//DEBUG_MSG("TCPPacketReceiver::~TCPPacketReceiver()\n");
 }
-
 
 //-------------------------------------------------------------------------------------
 bool TCPPacketReceiver::processSocket(bool expectingPacket)

@@ -53,7 +53,8 @@ Loginapp::Loginapp(Mercury::EventDispatcher& dispatcher,
 	pendingCreateMgr_(ninterface),
 	pendingLoginMgr_(ninterface),
 	digest_(),
-	pHttpCBHandler(NULL)
+	pHttpCBHandler(NULL),
+	initProgress_(0.f)
 {
 }
 
@@ -94,7 +95,6 @@ void Loginapp::handleTimeout(TimerHandle handle, void * arg)
 void Loginapp::handleCheckStatusTick()
 {
 	threadPool_.onMainThreadTick();
-	this->getMainDispatcher().processOnce(false);
 	getNetworkInterface().processAllChannelPackets(&LoginappInterface::messageHandlers);
 	pendingLoginMgr_.process();
 	pendingCreateMgr_.process();
@@ -149,7 +149,7 @@ bool Loginapp::inInitialize()
 bool Loginapp::initializeEnd()
 {
 	// 添加一个timer， 每秒检查一些状态
-	loopCheckTimerHandle_ = this->getMainDispatcher().addTimer(1000000, this,
+	loopCheckTimerHandle_ = this->getMainDispatcher().addTimer(1000000 / 50, this,
 							reinterpret_cast<void *>(TIMEOUT_CHECK_STATUS));
 
 	return true;
@@ -193,6 +193,24 @@ void Loginapp::onClientActiveTick(Mercury::Channel* pChannel)
 bool Loginapp::_createAccount(Mercury::Channel* pChannel, std::string& accountName, 
 								 std::string& password, std::string& datas, ACCOUNT_TYPE type)
 {
+	AUTO_SCOPED_PROFILE("createAccount");
+
+	ACCOUNT_TYPE oldType = type;
+
+	if(!g_kbeSrvConfig.getDBMgr().account_registration_enable)
+	{
+		WARNING_MSG(boost::format("Loginapp::_createAccount(%1%): not available!\n") % accountName);
+
+		std::string retdatas = "";
+		Mercury::Bundle bundle;
+		bundle.newMessage(ClientInterface::onCreateAccountResult);
+		SERVER_ERROR_CODE retcode = SERVER_ERR_ACCOUNT_REGISTER_NOT_AVAILABLE;
+		bundle << retcode;
+		bundle.appendBlob(retdatas);
+		bundle.send(this->getNetworkInterface(), pChannel);
+		return false;
+	}
+
 	accountName = KBEngine::strutil::kbe_trim(accountName);
 	password = KBEngine::strutil::kbe_trim(password);
 
@@ -309,8 +327,8 @@ bool Loginapp::_createAccount(Mercury::Channel* pChannel, std::string& accountNa
 		return false;
     }
 
-	DEBUG_MSG(boost::format("Loginapp::_createAccount: accountName=%1%, passwordsize=%2%, type=%3%.\n") %
-		accountName.c_str() % password.size() % type);
+	DEBUG_MSG(boost::format("Loginapp::_createAccount: accountName=%1%, passwordsize=%2%, type=%3%, oldType=%4%.\n") %
+		accountName.c_str() % password.size() % type % oldType);
 
 	ptinfos = new PendingLoginMgr::PLInfos;
 	ptinfos->accountName = accountName;
@@ -369,6 +387,9 @@ void Loginapp::reqCreateMailAccount(Mercury::Channel* pChannel, MemoryStream& s)
 
 	s >> accountName >> password;
 	s.readBlob(datas);
+
+	DEBUG_MSG(boost::format("Loginapp::reqCreateMailAccount: accountName=%1%, passwordsize=%2%.\n") %
+		accountName.c_str() % password.size());
 
 	if(!_createAccount(pChannel, accountName, password, datas, ACCOUNT_TYPE_MAIL))
 		return;
@@ -429,7 +450,10 @@ void Loginapp::onReqCreateMailAccountResult(Mercury::Channel* pChannel, MemorySt
 		std::string http_host = "localhost";
 		if(startGroupOrder_ == 1)
 		{
-			http_host = inet_ntoa((struct in_addr&)Loginapp::getSingleton().getNetworkInterface().extaddr().ip);
+			if(strlen((const char*)&g_kbeSrvConfig.getLoginApp().externalAddress) > 0)
+				http_host = g_kbeSrvConfig.getBaseApp().externalAddress;
+			else
+				http_host = inet_ntoa((struct in_addr&)Loginapp::getSingleton().getNetworkInterface().extaddr().ip);
 		}
 		else
 		{
@@ -438,7 +462,10 @@ void Loginapp::onReqCreateMailAccountResult(Mercury::Channel* pChannel, MemorySt
 			{
 				if((*iter).groupOrderid == 1)
 				{
-					http_host = inet_ntoa((struct in_addr&)(*iter).pExtAddr->ip);
+					if(strlen((const char*)&(*iter).externalAddressEx) > 0)
+						http_host = (*iter).externalAddressEx;
+					else
+						http_host = inet_ntoa((struct in_addr&)(*iter).pExtAddr->ip);
 				}
 			}
 		}
@@ -511,6 +538,8 @@ void Loginapp::onAccountResetPassword(Mercury::Channel* pChannel, std::string& c
 //-------------------------------------------------------------------------------------
 void Loginapp::reqAccountResetPassword(Mercury::Channel* pChannel, std::string& accountName)
 {
+	AUTO_SCOPED_PROFILE("reqAccountResetPassword");
+
 	accountName = KBEngine::strutil::kbe_trim(accountName);
 	INFO_MSG(boost::format("Loginapp::reqAccountResetPassword: accountName(%1%)\n") %
 		accountName);
@@ -564,7 +593,10 @@ void Loginapp::onReqAccountResetPasswordCB(Mercury::Channel* pChannel, std::stri
 		std::string http_host = "localhost";
 		if(startGroupOrder_ == 1)
 		{
-			http_host = inet_ntoa((struct in_addr&)Loginapp::getSingleton().getNetworkInterface().extaddr().ip);
+			if(strlen((const char*)&g_kbeSrvConfig.getLoginApp().externalAddress) > 0)
+				http_host = g_kbeSrvConfig.getBaseApp().externalAddress;
+			else
+				http_host = inet_ntoa((struct in_addr&)Loginapp::getSingleton().getNetworkInterface().extaddr().ip);
 		}
 		else
 		{
@@ -573,7 +605,10 @@ void Loginapp::onReqAccountResetPasswordCB(Mercury::Channel* pChannel, std::stri
 			{
 				if((*iter).groupOrderid == 1)
 				{
-					http_host = inet_ntoa((struct in_addr&)(*iter).pExtAddr->ip);
+					if(strlen((const char*)&(*iter).externalAddressEx) > 0)
+						http_host = (*iter).externalAddressEx;
+					else
+						http_host = inet_ntoa((struct in_addr&)(*iter).pExtAddr->ip);
 				}
 			}
 		}
@@ -587,6 +622,8 @@ void Loginapp::onReqAccountResetPasswordCB(Mercury::Channel* pChannel, std::stri
 //-------------------------------------------------------------------------------------
 void Loginapp::login(Mercury::Channel* pChannel, MemoryStream& s)
 {
+	AUTO_SCOPED_PROFILE("login");
+
 	COMPONENT_CLIENT_TYPE ctype;
 	CLIENT_CTYPE tctype = UNKNOWN_CLIENT_COMPONENT_TYPE;
 	std::string loginName;
@@ -610,30 +647,34 @@ void Loginapp::login(Mercury::Channel* pChannel, MemoryStream& s)
 	if(loginName.size() == 0)
 	{
 		ERROR_MSG("Loginapp::login: loginName is NULL.\n");
+		_loginFailed(pChannel, loginName, SERVER_ERR_NAME, datas);
 		return;
 	}
 
 	if(loginName.size() > ACCOUNT_NAME_MAX_LENGTH)
 	{
-		ERROR_MSG(boost::format("Loginapp::login: loginName too big, size=%1%, limit=%2%.\n") %
+		ERROR_MSG(boost::format("Loginapp::login: loginName is too long, size=%1%, limit=%2%.\n") %
 			loginName.size() % ACCOUNT_NAME_MAX_LENGTH);
-
+		
+		_loginFailed(pChannel, loginName, SERVER_ERR_NAME, datas);
 		return;
 	}
 
 	if(password.size() > ACCOUNT_PASSWD_MAX_LENGTH)
 	{
-		ERROR_MSG(boost::format("Loginapp::login: password too big, size=%1%, limit=%2%.\n") %
+		ERROR_MSG(boost::format("Loginapp::login: password is too long, size=%1%, limit=%2%.\n") %
 			password.size() % ACCOUNT_PASSWD_MAX_LENGTH);
-
+		
+		_loginFailed(pChannel, loginName, SERVER_ERR_PASSWORD, datas);
 		return;
 	}
 	
 	if(datas.size() > ACCOUNT_DATA_MAX_LENGTH)
 	{
-		ERROR_MSG(boost::format("Loginapp::login: bindatas too big, size=%1%, limit=%2%.\n") %
+		ERROR_MSG(boost::format("Loginapp::login: bindatas is too long, size=%1%, limit=%2%.\n") %
 			datas.size() % ACCOUNT_DATA_MAX_LENGTH);
-
+		
+		_loginFailed(pChannel, loginName, SERVER_ERR_OP_FAILED, datas);
 		return;
 	}
 
@@ -685,6 +726,13 @@ void Loginapp::login(Mercury::Channel* pChannel, MemoryStream& s)
 		return;
 	}
 
+	if(initProgress_ < 1.f)
+	{
+		datas = (boost::format("initProgress: %1%") % initProgress_).str();
+		_loginFailed(pChannel, loginName, SERVER_ERR_SRV_STARTING, datas);
+		return;
+	}
+
 	INFO_MSG(boost::format("Loginapp::login: new client[%1%], loginName=%2%, datas=%3%.\n") %
 		COMPONENT_CLIENT_NAME[ctype] % loginName.c_str() % datas.c_str());
 
@@ -727,7 +775,7 @@ void Loginapp::login(Mercury::Channel* pChannel, MemoryStream& s)
 //-------------------------------------------------------------------------------------
 void Loginapp::_loginFailed(Mercury::Channel* pChannel, std::string& loginName, SERVER_ERROR_CODE failedcode, std::string& datas, bool force)
 {
-	DEBUG_MSG(boost::format("Loginapp::loginFailed: loginName=%1% login is failed. failedcode=%2%, datas=%3%.\n") %
+	ERROR_MSG(boost::format("Loginapp::loginFailed: loginName=%1% login is failed. failedcode=%2%, datas=%3%.\n") %
 		loginName.c_str() % SERVER_ERR_STR[failedcode] % datas);
 	
 	PendingLoginMgr::PLInfos* infos = pendingLoginMgr_.remove(loginName);
@@ -785,6 +833,9 @@ void Loginapp::onLoginAccountQueryResultFromDbmgr(Mercury::Channel* pChannel, Me
 	s >> deadline;
 
 	s.readBlob(datas);
+
+	//DEBUG_MSG(boost::format("Loginapp::onLoginAccountQueryResultFromDbmgr: loginName=%1%.\n") %
+	//	loginName);
 
 	if((flags & ACCOUNT_FLAG_LOCK) > 0)
 	{
@@ -867,6 +918,15 @@ void Loginapp::onLoginAccountQueryBaseappAddrFromBaseappmgr(Mercury::Channel* pC
 {
 	if(pChannel->isExternal())
 		return;
+	
+	if(addr == 0)
+	{
+		ERROR_MSG(boost::format("Loginapp::onLoginAccountQueryBaseappAddrFromBaseappmgr:accountName=%1%, not found baseapp.\n") % 
+			loginName);
+		
+		std::string datas;
+		_loginFailed(NULL, loginName, SERVER_ERR_SRV_NO_READY, datas);
+	}
 
 	Mercury::Address address(addr, port);
 
@@ -902,12 +962,14 @@ void Loginapp::onLoginAccountQueryBaseappAddrFromBaseappmgr(Mercury::Channel* pC
 //-------------------------------------------------------------------------------------
 void Loginapp::onHello(Mercury::Channel* pChannel, 
 						const std::string& verInfo, 
+						const std::string& scriptVerInfo, 
 						const std::string& encryptedKey)
 {
 	Mercury::Bundle* pBundle = Mercury::Bundle::ObjPool().createObject();
 	
 	pBundle->newMessage(ClientInterface::onHelloCB);
 	(*pBundle) << KBEVersion::versionString();
+	(*pBundle) << KBEVersion::scriptVersionString();
 	(*pBundle) << g_componentType;
 	(*pBundle).send(getNetworkInterface(), pChannel);
 
@@ -935,6 +997,18 @@ void Loginapp::onVersionNotMatch(Mercury::Channel* pChannel)
 	
 	pBundle->newMessage(ClientInterface::onVersionNotMatch);
 	(*pBundle) << KBEVersion::versionString();
+	(*pBundle).send(getNetworkInterface(), pChannel);
+
+	Mercury::Bundle::ObjPool().reclaimObject(pBundle);
+}
+
+//-------------------------------------------------------------------------------------
+void Loginapp::onScriptVersionNotMatch(Mercury::Channel* pChannel)
+{
+	Mercury::Bundle* pBundle = Mercury::Bundle::ObjPool().createObject();
+	
+	pBundle->newMessage(ClientInterface::onScriptVersionNotMatch);
+	(*pBundle) << KBEVersion::scriptVersionString();
 	(*pBundle).send(getNetworkInterface(), pChannel);
 
 	Mercury::Bundle::ObjPool().reclaimObject(pBundle);
@@ -1075,6 +1149,18 @@ void Loginapp::importServerErrorsDescr(Mercury::Channel* pChannel)
 	}
 
 	bundle.resend(getNetworkInterface(), pChannel);
+}
+
+//-------------------------------------------------------------------------------------
+void Loginapp::onBaseappInitProgress(Mercury::Channel* pChannel, float progress)
+{
+	if(progress > 1.f)
+	{
+		INFO_MSG(boost::format("Loginapp::onBaseappInitProgress: progress=%1%.\n") % 
+			(progress > 1.f ? 1.f : progress));
+	}
+
+	initProgress_ = progress;
 }
 
 //-------------------------------------------------------------------------------------

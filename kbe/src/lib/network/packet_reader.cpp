@@ -143,8 +143,8 @@ void PacketReader::processMessages(KBEngine::Mercury::MessageHandlers* pMsgHandl
 				TRACE_BUNDLE_DATA(true, pPacket1, pMsgHandler, pPacket1->opsize(), pChannel_->c_str());
 				pPacket1->rpos(rpos);
 
-				WARNING_MSG(boost::format("PacketReader::processMessages(%1%): msglen is error! msgID=%2%, msglen=(%3%:%4%), from %5%.\n") % 
-					pMsgHandler->name.c_str() % currMsgID_ % currMsgLen_ % pPacket1->opsize() % pChannel_->c_str());
+				WARNING_MSG(boost::format("PacketReader::processMessages(%1%): msglen exceeds the limit! msgID=%2%, msglen=(%3%:%4%), maxlen=%6%, from %5%.\n") % 
+					pMsgHandler->name.c_str() % currMsgID_ % currMsgLen_ % pPacket1->opsize() % pChannel_->c_str() % pMsgHandler->msglenMax());
 
 				currMsgLen_ = 0;
 				pChannel_->condemn();
@@ -218,8 +218,8 @@ void PacketReader::writeFragmentMessage(FragmentDataTypes fragmentDatasFlag, Pac
 		pPacket->opfini();
 	}
 
-	DEBUG_MSG(boost::format("PacketReader::writeFragmentMessage(%1%): channel[%2%], fragmentDatasFlag=%3%, remainsize=%4%.\n") % 
-		pChannel_->c_str() % pChannel_ % fragmentDatasFlag % pFragmentDatasRemain_);
+	DEBUG_MSG(boost::format("PacketReader::writeFragmentMessage(%1%): channel[%2%], fragmentDatasFlag=%3%, remainsize=%4%, currMsgID=%5%, currMsgLen=%6%.\n") % 
+		pChannel_->c_str() % pChannel_ % fragmentDatasFlag % pFragmentDatasRemain_ % currMsgID_ % currMsgLen_);
 }
 
 //-------------------------------------------------------------------------------------
@@ -257,11 +257,12 @@ void PacketReader::mergeFragmentMessage(Packet* pPacket)
 			break;
 		};
 
+		DEBUG_MSG(boost::format("PacketReader::mergeFragmentMessage(%1%): channel[%2%], fragmentDatasFlag=%3%, currMsgID=%4%, currMsgLen=%5%, completed!\n") % 
+			pChannel_->c_str() % pChannel_ % fragmentDatasFlag_ % currMsgID_ % currMsgLen_);
+
 		fragmentDatasFlag_ = FRAGMENT_DATA_UNKNOW;
 		pFragmentDatasRemain_ = 0;
 		SAFE_RELEASE_ARRAY(pFragmentDatas_);
-		DEBUG_MSG(boost::format("PacketReader::mergeFragmentMessage(%1%): channel[%2%], completed!\n") % 
-			pChannel_->c_str() % pChannel_);
 	}
 	else
 	{
@@ -270,8 +271,8 @@ void PacketReader::mergeFragmentMessage(Packet* pPacket)
 		pFragmentDatasWpos_ += opsize;
 		pPacket->rpos(pPacket->rpos() + opsize);
 
-		DEBUG_MSG(boost::format("PacketReader::writeFragmentMessage(%1%): channel[%2%], fragmentDatasFlag=%3%, remainsize=%4%.\n") %
-			pChannel_->c_str() % pChannel_ % fragmentDatasFlag_ % pFragmentDatasRemain_);
+		DEBUG_MSG(boost::format("PacketReader::mergeFragmentMessage(%1%): channel[%2%], fragmentDatasFlag=%3%, remainsize=%4%, currMsgID=%5%, currMsgLen=%6%.\n") %
+			pChannel_->c_str() % pChannel_ % fragmentDatasFlag_ % pFragmentDatasRemain_ % currMsgID_ % currMsgLen_);
 	}	
 }
 

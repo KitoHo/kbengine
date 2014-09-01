@@ -23,6 +23,7 @@ along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 #include "dbmgr_interface.hpp"
 #include "dbtasks.hpp"
 #include "billinghandler.hpp"
+#include "sync_app_datas_handler.hpp"
 #include "db_mysql/kbe_table_mysql.hpp"
 #include "network/common.hpp"
 #include "network/tcp_packet.hpp"
@@ -59,14 +60,14 @@ Dbmgr::Dbmgr(Mercury::EventDispatcher& dispatcher,
 	pBaseAppData_(NULL),
 	pCellAppData_(NULL),
 	bufferedDBTasks_(),
-	dbThreadPool_(),
 	numWrittenEntity_(0),
 	numRemovedEntity_(0),
 	numQueryEntity_(0),
 	numExecuteRawDatabaseCommand_(0),
 	numCreatedAccount_(0),
 	pBillingAccountHandler_(NULL),
-	pBillingChargeHandler_(NULL)
+	pBillingChargeHandler_(NULL),
+	pSyncAppDatasHandler_(NULL)
 {
 }
 
@@ -89,7 +90,7 @@ bool Dbmgr::canShutdown()
 	if(ret)
 	{
 		WARNING_MSG(boost::format("Dbmgr::canShutdown(): tasks=%1%, threads=%2%, threadpoolDestroyed=%3%!\n") % 
-			bufferedDBTasks_.size() % dbThreadPool_.getCurrentThreadCount() % dbThreadPool_.isDestroyed());
+			bufferedDBTasks_.size() % DBUtil::pThreadPool()->currentThreadCount() % DBUtil::pThreadPool()->isDestroyed());
 	}
 
 	return ret;
@@ -103,7 +104,13 @@ bool Dbmgr::initializeWatcher()
 	WATCH_OBJECT("numQueryEntity", numQueryEntity_);
 	WATCH_OBJECT("numExecuteRawDatabaseCommand", numExecuteRawDatabaseCommand_);
 	WATCH_OBJECT("numCreatedAccount", numCreatedAccount_);
-	return ServerApp::initializeWatcher();
+
+	WATCH_OBJECT("DBThreadPool/dbid_tasksSize", &bufferedDBTasks_, &Buffered_DBTasks::dbid_tasksSize);
+	WATCH_OBJECT("DBThreadPool/entityid_tasksSize", &bufferedDBTasks_, &Buffered_DBTasks::entityid_tasksSize);
+	WATCH_OBJECT("DBThreadPool/printBuffered_dbid", &bufferedDBTasks_, &Buffered_DBTasks::printBuffered_dbid);
+	WATCH_OBJECT("DBThreadPool/printBuffered_entityID", &bufferedDBTasks_, &Buffered_DBTasks::printBuffered_entityID);
+
+	return ServerApp::initializeWatcher() && DBUtil::pThreadPool()->initializeWatcher();
 }
 
 //-------------------------------------------------------------------------------------
@@ -138,7 +145,7 @@ void Dbmgr::handleMainTick()
 	
 	g_kbetime++;
 	threadPool_.onMainThreadTick();
-	dbThreadPool_.onMainThreadTick();
+	DBUtil::pThreadPool()->onMainThreadTick();
 	getNetworkInterface().processAllChannelPackets(&DbmgrInterface::messageHandlers);
 }
 
@@ -187,15 +194,15 @@ bool Dbmgr::initializeEnd()
 
 	INFO_MSG(boost::format("Dbmgr::initializeEnd: digest(%1%)\n") % 
 		EntityDef::md5().getDigestStr());
-
+	
 	return initBillingHandler() && initDB();
 }
 
 //-------------------------------------------------------------------------------------		
 bool Dbmgr::initBillingHandler()
 {
-	pBillingAccountHandler_ = BillingHandlerFactory::create(g_kbeSrvConfig.billingSystemAccountType(), threadPool(), dbThreadPool_);
-	pBillingChargeHandler_ = BillingHandlerFactory::create(g_kbeSrvConfig.billingSystemChargeType(), threadPool(), dbThreadPool_);
+	pBillingAccountHandler_ = BillingHandlerFactory::create(g_kbeSrvConfig.billingSystemAccountType(), threadPool(), *static_cast<KBEngine::DBThreadPool*>(DBUtil::pThreadPool()));
+	pBillingChargeHandler_ = BillingHandlerFactory::create(g_kbeSrvConfig.billingSystemChargeType(), threadPool(), *static_cast<KBEngine::DBThreadPool*>(DBUtil::pThreadPool()));
 
 	INFO_MSG(boost::format("Dbmgr::initBillingHandler: billing addr(%1%), accountType:(%2%), chargeType:(%3%).\n") % 
 		g_kbeSrvConfig.billingSystemAddr().c_str() %
@@ -228,8 +235,6 @@ bool Dbmgr::initDB()
 		return false;
 	}
 
-	ENGINE_COMPONENT_INFO& dbcfg = g_kbeSrvConfig.getDBMgr();
-
 	DBInterface* pDBInterface = DBUtil::createInterface();
 	if(pDBInterface == NULL)
 	{
@@ -250,12 +255,6 @@ bool Dbmgr::initDB()
 	if(!ret)
 		return false;
 
-	if(!dbThreadPool_.isInitialize())
-	{
-		ret = dbThreadPool_.createThreadPool(dbcfg.db_numConnections, 
-			dbcfg.db_numConnections, dbcfg.db_numConnections);
-	}
-
 	return ret;
 }
 
@@ -266,7 +265,7 @@ void Dbmgr::finalise()
 	SAFE_RELEASE(pBaseAppData_);
 	SAFE_RELEASE(pCellAppData_);
 
-	dbThreadPool_.finalise();
+	DBUtil::finalise();
 	ServerApp::finalise();
 }
 
@@ -293,14 +292,13 @@ void Dbmgr::onReqAllocEntityID(Mercury::Channel* pChannel, int8 componentType, C
 //-------------------------------------------------------------------------------------
 void Dbmgr::onRegisterNewApp(Mercury::Channel* pChannel, int32 uid, std::string& username, 
 						int8 componentType, uint64 componentID, int8 globalorderID, int8 grouporderID,
-						uint32 intaddr, uint16 intport, uint32 extaddr, uint16 extport)
+						uint32 intaddr, uint16 intport, uint32 extaddr, uint16 extport, std::string& extaddrEx)
 {
 	ServerApp::onRegisterNewApp(pChannel, uid, username, componentType, componentID, globalorderID, grouporderID,
-						intaddr, intport, extaddr, extport);
+						intaddr, intport, extaddr, extport, extaddrEx);
 
 	KBEngine::COMPONENT_TYPE tcomponentType = (KBEngine::COMPONENT_TYPE)componentType;
 	
-	std::string digest = EntityDef::md5().getDigestStr();
 	int32 startGroupOrder = 1;
 	int32 startGlobalOrder = Componentbridge::getComponents().getGlobalOrderLog()[getUserUID()];
 
@@ -310,6 +308,9 @@ void Dbmgr::onRegisterNewApp(Mercury::Channel* pChannel, int32 uid, std::string&
 	if(globalorderID > 0)
 		startGlobalOrder = globalorderID;
 
+	if(pSyncAppDatasHandler_ == NULL)
+		pSyncAppDatasHandler_ = new SyncAppDatasHandler(this->getNetworkInterface());
+
 	// 下一步:
 	// 如果是连接到dbmgr则需要等待接收app初始信息
 	// 例如：初始会分配entityID段以及这个app启动的顺序信息（是否第一个baseapp启动）
@@ -317,53 +318,31 @@ void Dbmgr::onRegisterNewApp(Mercury::Channel* pChannel, int32 uid, std::string&
 		tcomponentType == CELLAPP_TYPE || 
 		tcomponentType == LOGINAPP_TYPE)
 	{
-		Mercury::Bundle* pBundle = Mercury::Bundle::ObjPool().createObject();
-		
 		switch(tcomponentType)
 		{
 		case BASEAPP_TYPE:
 			{
 				if(grouporderID <= 0)
 					startGroupOrder = Componentbridge::getComponents().getBaseappGroupOrderLog()[getUserUID()];
-
-
-				onGlobalDataClientLogon(pChannel, BASEAPP_TYPE);
-
-				std::pair<ENTITY_ID, ENTITY_ID> idRange = idServer_.allocRange();
-				(*pBundle).newMessage(BaseappInterface::onDbmgrInitCompleted);
-				BaseappInterface::onDbmgrInitCompletedArgs6::staticAddToBundle((*pBundle), g_kbetime, idRange.first, 
-					idRange.second, startGlobalOrder, startGroupOrder, digest);
 			}
 			break;
 		case CELLAPP_TYPE:
 			{
 				if(grouporderID <= 0)
 					startGroupOrder = Componentbridge::getComponents().getCellappGroupOrderLog()[getUserUID()];
-
-				onGlobalDataClientLogon(pChannel, CELLAPP_TYPE);
-
-				std::pair<ENTITY_ID, ENTITY_ID> idRange = idServer_.allocRange();
-				(*pBundle).newMessage(CellappInterface::onDbmgrInitCompleted);
-				CellappInterface::onDbmgrInitCompletedArgs6::staticAddToBundle((*pBundle), g_kbetime, idRange.first, 
-					idRange.second, startGlobalOrder, startGroupOrder, digest);
 			}
 			break;
 		case LOGINAPP_TYPE:
 			if(grouporderID <= 0)
 				startGroupOrder = Componentbridge::getComponents().getLoginappGroupOrderLog()[getUserUID()];
 
-			(*pBundle).newMessage(LoginappInterface::onDbmgrInitCompleted);
-			LoginappInterface::onDbmgrInitCompletedArgs3::staticAddToBundle((*pBundle), 
-				startGlobalOrder, startGroupOrder, digest);
-
 			break;
 		default:
 			break;
 		}
-
-		(*pBundle).send(networkInterface_, pChannel);
-		Mercury::Bundle::ObjPool().reclaimObject(pBundle);
 	}
+
+	pSyncAppDatasHandler_->pushApp(componentID, startGroupOrder, startGlobalOrder);
 
 	// 如果是baseapp或者cellapp则将自己注册到所有其他baseapp和cellapp
 	if(tcomponentType == BASEAPP_TYPE || 
@@ -384,15 +363,15 @@ void Dbmgr::onRegisterNewApp(Mercury::Channel* pChannel, int32 uid, std::string&
 				
 				if(tcomponentType == BASEAPP_TYPE)
 				{
-					BaseappInterface::onGetEntityAppFromDbmgrArgs10::staticAddToBundle((*pBundle), 
+					BaseappInterface::onGetEntityAppFromDbmgrArgs11::staticAddToBundle((*pBundle), 
 						uid, username, componentType, componentID, startGlobalOrder, startGroupOrder,
-							intaddr, intport, extaddr, extport);
+							intaddr, intport, extaddr, extport, g_kbeSrvConfig.getConfig().externalAddress);
 				}
 				else
 				{
-					CellappInterface::onGetEntityAppFromDbmgrArgs10::staticAddToBundle((*pBundle), 
+					CellappInterface::onGetEntityAppFromDbmgrArgs11::staticAddToBundle((*pBundle), 
 						uid, username, componentType, componentID, startGlobalOrder, startGroupOrder,
-							intaddr, intport, extaddr, extport);
+							intaddr, intport, extaddr, extport, g_kbeSrvConfig.getConfig().externalAddress);
 				}
 				
 				KBE_ASSERT((*fiter).pChannel != NULL);
@@ -544,14 +523,14 @@ void Dbmgr::onAccountOnline(Mercury::Channel* pChannel,
 							COMPONENT_ID componentID, 
 							ENTITY_ID entityID)
 {
-	// PUSH_THREAD_TASK(new DBTaskAccountOnline(pChannel->addr(), 
+	// bufferedDBTasks_.addTask(new DBTaskAccountOnline(pChannel->addr(), 
 	//	accountName, componentID, entityID));
 }
 
 //-------------------------------------------------------------------------------------
 void Dbmgr::onEntityOffline(Mercury::Channel* pChannel, DBID dbid, ENTITY_SCRIPT_UID sid)
 {
-	dbThreadPool_.addTask(new DBTaskEntityOffline(pChannel->addr(), dbid, sid));
+	bufferedDBTasks_.addTask(new DBTaskEntityOffline(pChannel->addr(), dbid, sid));
 }
 
 //-------------------------------------------------------------------------------------
@@ -562,7 +541,7 @@ void Dbmgr::executeRawDatabaseCommand(Mercury::Channel* pChannel,
 	s >> entityID;
 
 	if(entityID == -1)
-		dbThreadPool_.addTask(new DBTaskExecuteRawDatabaseCommand(pChannel->addr(), s));
+		DBUtil::pThreadPool()->addTask(new DBTaskExecuteRawDatabaseCommand(pChannel->addr(), s));
 	else
 		bufferedDBTasks_.addTask(new DBTaskExecuteRawDatabaseCommandByEntity(pChannel->addr(), s, entityID));
 
@@ -616,15 +595,15 @@ void Dbmgr::deleteBaseByDBID(Mercury::Channel* pChannel, KBEngine::MemoryStream&
 	s >> componentID >> entityDBID >> callbackID >> sid;
 	KBE_ASSERT(entityDBID > 0);
 
-	dbThreadPool_.addTask(new DBTaskDeleteBaseByDBID(pChannel->addr(), 
+	DBUtil::pThreadPool()->addTask(new DBTaskDeleteBaseByDBID(pChannel->addr(), 
 		componentID, entityDBID, callbackID, sid));
 }
 
 //-------------------------------------------------------------------------------------
-void Dbmgr::queryEntity(Mercury::Channel* pChannel, COMPONENT_ID componentID, DBID dbid, 
+void Dbmgr::queryEntity(Mercury::Channel* pChannel, COMPONENT_ID componentID, int8 queryMode, DBID dbid, 
 	std::string& entityType, CALLBACK_ID callbackID, ENTITY_ID entityID)
 {
-	bufferedDBTasks_.addTask(new DBTaskQueryEntity(pChannel->addr(), entityType, 
+	bufferedDBTasks_.addTask(new DBTaskQueryEntity(pChannel->addr(), queryMode, entityType, 
 		dbid, componentID, callbackID, entityID));
 
 	numQueryEntity_++;

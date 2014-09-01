@@ -18,8 +18,8 @@ You should have received a copy of the GNU Lesser General Public License
 along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef __SCRIPT_TIMERS_HPP__
-#define __SCRIPT_TIMERS_HPP__
+#ifndef KBE_SCRIPT_TIMERS_HPP
+#define KBE_SCRIPT_TIMERS_HPP
 #include "cstdkbe/cstdkbe.hpp"
 #include "cstdkbe/timer.hpp"
 
@@ -49,8 +49,14 @@ public:
 	ScriptID getIDForHandle(TimerHandle handle) const;
 
 	bool isEmpty() const	{ return map_.empty(); }
-private:
+
 	typedef std::map<ScriptID, TimerHandle> Map;
+
+	ScriptTimers::Map& map(){ return map_; }
+
+	void directAddTimer(ScriptID tid, TimerHandle handle);
+private:
+	
 
 	ScriptID getNewID();
 	Map::const_iterator findTimer(TimerHandle handle) const;

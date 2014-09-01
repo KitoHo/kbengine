@@ -20,8 +20,8 @@ along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 
 
 
-#ifndef __BASE_H__
-#define __BASE_H__
+#ifndef KBE_BASE_HPP
+#define KBE_BASE_HPP
 	
 // common include	
 #include "profile.hpp"
@@ -71,8 +71,8 @@ public:
 	/** 
 		数据库关联ID
 	*/
-	INLINE DBID getDBID()const;
-	INLINE void setDBID(DBID id);
+	INLINE DBID dbid()const;
+	INLINE void dbid(DBID id);
 	DECLARE_PY_GET_MOTHOD(pyGetDBID);
 
 	/** 
@@ -98,18 +98,18 @@ public:
 	*/
 	DECLARE_PY_GET_MOTHOD(pyGetCellMailbox);
 
-	EntityMailbox* getCellMailbox(void)const;
+	EntityMailbox* cellMailbox(void)const;
 
-	void setCellMailbox(EntityMailbox* mailbox);
+	void cellMailbox(EntityMailbox* mailbox);
 	
 	/** 
 		脚本获取mailbox 
 	*/
 	DECLARE_PY_GET_MOTHOD(pyGetClientMailbox);
 
-	EntityMailbox* getClientMailbox()const;
+	EntityMailbox* clientMailbox()const;
 
-	void setClientMailbox(EntityMailbox* mailbox);
+	void clientMailbox(EntityMailbox* mailbox);
 
 	/**
 		是否创建过space
@@ -233,6 +233,12 @@ public:
 		客户端直接发送消息给cell实体
 	*/
 	void forwardEntityMessageToCellappFromClient(Mercury::Channel* pChannel, MemoryStream& s);
+	
+	/**
+		发送消息到cellapp上
+	*/
+	void sendToCellapp(Mercury::Bundle* pBundle);
+	void sendToCellapp(Mercury::Channel* pChannel, Mercury::Bundle* pBundle);
 
 	/** 
 		传送
@@ -252,6 +258,12 @@ public:
 	void reqTeleportOther(Mercury::Channel* pChannel, ENTITY_ID reqTeleportEntityID, 
 		COMPONENT_ID reqTeleportEntityCellAppID, COMPONENT_ID reqTeleportEntityBaseAppID);
 
+	/** 网络接口
+		entity请求迁移到另一个cellapp上的过程开始和结束。
+	*/
+	void onMigrationCellappStart(Mercury::Channel* pChannel, COMPONENT_ID cellappID);
+	void onMigrationCellappEnd(Mercury::Channel* pChannel, COMPONENT_ID cellappID);
+
 	/**
 		设置获取是否自动存档
 	*/
@@ -265,6 +277,11 @@ public:
 	INLINE int8 shouldAutoBackup()const;
 	INLINE void shouldAutoBackup(int8 v);
 	DECLARE_PY_GETSET_MOTHOD(pyGetShouldAutoBackup, pySetShouldAutoBackup);
+
+	/**
+		cellapp宕了
+	*/
+	void onCellAppDeath();
 protected:
 	// 这个entity的客户端mailbox cellapp mailbox
 	EntityMailbox*							clientMailbox_;			
@@ -306,4 +323,4 @@ protected:
 #include "base.ipp"
 #endif
 
-#endif
+#endif // KBE_BASE_HPP

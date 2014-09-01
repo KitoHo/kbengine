@@ -19,8 +19,8 @@ along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 
-#ifndef __BASEAPP_H__
-#define __BASEAPP_H__
+#ifndef KBE_BASEAPP_HPP
+#define KBE_BASEAPP_HPP
 	
 // common include	
 #include "base.hpp"
@@ -120,7 +120,7 @@ public:
 							int32 uid, 
 							std::string& username, 
 							int8 componentType, uint64 componentID, int8 globalorderID, int8 grouporderID,
-							uint32 intaddr, uint16 intport, uint32 extaddr, uint16 extport);
+							uint32 intaddr, uint16 intport, uint32 extaddr, uint16 extport, std::string& extaddrEx);
 	
 	/** 网络接口
 		某个client向本app告知处于活动状态。
@@ -138,6 +138,7 @@ public:
 	static PyObject* __py_createBase(PyObject* self, PyObject* args);
 	static PyObject* __py_createBaseAnywhere(PyObject* self, PyObject* args);
 	static PyObject* __py_createBaseFromDBID(PyObject* self, PyObject* args);
+	static PyObject* __py_createBaseAnywhereFromDBID(PyObject* self, PyObject* args);
 	
 	/**
 		创建一个新的space 
@@ -172,6 +173,23 @@ public:
 	void onCreateBaseFromDBIDCallback(Mercury::Channel* pChannel, KBEngine::MemoryStream& s);
 
 	/** 
+		从db获取信息创建一个entity
+	*/
+	void createBaseAnywhereFromDBID(const char* entityType, DBID dbid, PyObject* pyCallback);
+
+	/** 网络接口
+		createBaseFromDBID的回调。
+	*/
+	// 从数据库来的回调
+	void onCreateBaseAnywhereFromDBIDCallback(Mercury::Channel* pChannel, KBEngine::MemoryStream& s);
+	// 请求在这个进程上创建这个entity
+	void createBaseAnywhereFromDBIDOtherBaseapp(Mercury::Channel* pChannel, KBEngine::MemoryStream& s);
+	// 创建完毕后的回调
+	void onCreateBaseAnywhereFromDBIDOtherBaseappCallback(Mercury::Channel* pChannel, COMPONENT_ID createByBaseappID, 
+							std::string entityType, ENTITY_ID createdEntityID, CALLBACK_ID callbackID, DBID dbid);
+	
+
+	/** 
 		baseapp 的createBaseAnywhere的回调 
 	*/
 	void onCreateBaseAnywhereCallback(Mercury::Channel* pChannel, KBEngine::MemoryStream& s);
@@ -179,7 +197,7 @@ public:
 		std::string& entityType, ENTITY_ID eid, COMPONENT_ID componentID);
 
 	/** 
-		为一个baseEntity在制定的cell上创建一个cellEntity 
+		为一个baseEntity在指定的cell上创建一个cellEntity 
 	*/
 	void createCellEntity(EntityMailboxAbstract* createToCellMailbox, Base* base);
 	
@@ -259,7 +277,7 @@ public:
 	/**
 		客户端自身进入世界了
 	*/
-	void onClientEntityEnterWorld(Proxy* base);
+	void onClientEntityEnterWorld(Proxy* base, COMPONENT_ID componentID);
 
 	/** 网络接口
 		entity收到一封mail, 由某个app上的mailbox发起(只限与服务器内部使用， 客户端的mailbox调用方法走
@@ -342,10 +360,14 @@ public:
 
 	virtual void onHello(Mercury::Channel* pChannel, 
 		const std::string& verInfo, 
+		const std::string& scriptVerInfo, 
 		const std::string& encryptedKey);
 
 	// 引擎版本不匹配
 	virtual void onVersionNotMatch(Mercury::Channel* pChannel);
+
+	// 引擎脚本层版本不匹配
+	virtual void onScriptVersionNotMatch(Mercury::Channel* pChannel);
 
 	/**
 		一个cell的entity都恢复完毕
@@ -444,4 +466,5 @@ protected:
 };
 
 }
-#endif
+
+#endif // KBE_BASEAPP_HPP

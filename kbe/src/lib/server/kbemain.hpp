@@ -18,8 +18,9 @@ You should have received a copy of the GNU Lesser General Public License
 along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef __KBEMAIN__
-#define __KBEMAIN__
+#ifndef KBE_KBEMAIN_HPP
+#define KBE_KBEMAIN_HPP
+
 #include "helper/memory_helper.hpp"
 
 #include "serverapp.hpp"
@@ -30,7 +31,7 @@ along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 #include "network/event_dispatcher.hpp"
 #include "network/network_interface.hpp"
 #include "server/componentbridge.hpp"
-#include "server/serverinfos.hpp"
+#include "server/machine_infos.hpp"
 #include "resmgr/resmgr.hpp"
 
 #if KBE_PLATFORM == PLATFORM_WIN32
@@ -41,16 +42,17 @@ namespace KBEngine{
 
 inline void START_MSG(const char * name, uint64 appuid)
 {
-	ServerInfos serverInfo;
+	MachineInfos machineInfo;
 	
 	std::string s = (boost::format("---- %1% "
 			"Version: %2%. "
-			"Config: %3%. "
-			"Built: %4% %5%. "
-			"AppUID: %6%. "
-			"UID: %7%. "
-			"PID: %8% ----\n") %
-		name % KBEVersion::versionString().c_str() %
+			"ScriptVersion: %3%. "
+			"Config: %4%. "
+			"Built: %5% %6%. "
+			"AppID: %7%. "
+			"UID: %8%. "
+			"PID: %9% ----\n") %
+		name % KBEVersion::versionString() % KBEVersion::scriptVersionString() %
 		KBE_CONFIG % __TIME__ % __DATE__ %
 		appuid % getUserUID() % getProcessPID()).str();
 
@@ -61,9 +63,9 @@ inline void START_MSG(const char * name, uint64 appuid)
 #endif
 
 	s = (boost::format("Server %1%: %2% with %3% RAM\n") %
-		serverInfo.serverName().c_str() %
-		serverInfo.cpuInfo().c_str() %
-		serverInfo.memInfo().c_str() ).str();
+		machineInfo.machineName().c_str() %
+		machineInfo.cpuInfo().c_str() %
+		machineInfo.memInfo().c_str() ).str();
 
 	INFO_MSG(s);
 
@@ -135,7 +137,7 @@ int kbeMainT(int argc, char * argv[], COMPONENT_TYPE componentType,
 		Resmgr::getSingleton().matchPath("key/") + "kbengine_private.key");
 #endif
 
-	Resmgr::getSingleton().pirnt();
+	Resmgr::getSingleton().print();
 
 	Mercury::EventDispatcher dispatcher;
 	DebugHelper::getSingleton().pDispatcher(&dispatcher);
@@ -296,12 +298,12 @@ kbeMain(int argc, char* argv[]);																						\
 int main(int argc, char* argv[])																						\
 {																														\
 	loadConfig();																										\
-	parseMainCommandArgs(argc, argv);																					\
 	g_componentID = genUUID64();																						\
+	parseMainCommandArgs(argc, argv);																					\
 	return kbeMain(argc, argv);																							\
 }																														\
 int kbeMain
 #endif
 }
 
-#endif // __KBEMAIN__
+#endif // KBE_KBEMAIN_HPP
